@@ -98,6 +98,8 @@ def test_index_known_facts():
     # defined only in Deprecated_Specialization_[Game].lua: needs TOC placeholder expansion
     assert idx.status("GetTalentInfo", "classic_anniversary") == "deprecated_shim"
     assert idx.status("GetTalentInfo", "classic_era") == "deprecated_shim"
+    # LoD Blizzard_CombatLogBase is a dependency of always-loaded Blizzard_DeprecatedCombatLog
+    assert idx.status("COMBATLOG_FILTER_MINE", "classic_anniversary") == "blizzard_ui"
 
 
 def test_toc_placeholders_expand_per_client():

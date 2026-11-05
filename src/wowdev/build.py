@@ -360,6 +360,7 @@ def loaded_files(f: Flavor) -> list[tuple[Path, bool]]:
             elif p.suffix.lower() == ".xml":
                 walk_xml(p, lod)
 
+    addons = []  # (dir, toc lines, lod) for every addon this client may load
     for addon in sorted((f.ui_dir / "Interface" / "AddOns").iterdir()):
         if not addon.is_dir() or addon.name == "Blizzard_APIDocumentationGenerated":
             continue
@@ -378,7 +379,11 @@ def loaded_files(f: Flavor) -> list[tuple[Path, bool]]:
             continue
         if headers.get("allowload", "both").lower() == "glue":
             continue
-        lod = headers.get("loadondemand", "0").strip() == "1"
+        addons.append((addon, lines, headers.get("loadondemand", "0").strip() == "1"))
+
+    always = _always_loaded(f, addons)
+    for addon, lines, lod in addons:
+        lod = lod and addon.name.lower() not in always
         for ln in lines:
             ln = ln.strip()
             if not ln or ln.startswith("#"):
@@ -394,6 +399,49 @@ def loaded_files(f: Flavor) -> list[tuple[Path, bool]]:
                 elif p.suffix.lower() == ".xml":
                     walk_xml(p, lod)
     return out
+
+
+_DEP_HEADER = re.compile(r"^##\s*(dep\w*|requireddeps?|loadwith)\s*:\s*(.*)$", re.I)
+
+
+def _always_loaded(f: Flavor, addons: list) -> set[str]:
+    """Lower-cased names of addons loaded at startup: every non-LoadOnDemand
+    addon, plus any LoadOnDemand addon one of those depends on, or that loads
+    with one of them (## LoadWith). Blizzard_DeprecatedCombatLog is always
+    loaded and depends on the LoD Blizzard_CombatLogBase, so COMBATLOG_FILTER_MINE
+    exists from login, which a bare LoadOnDemand flag gets wrong."""
+    deps: dict[str, set[str]] = {}
+    loadwith: dict[str, set[str]] = {}
+    lod_flag = {}
+    for addon, lines, lod in addons:
+        name = addon.name.lower()
+        lod_flag[name] = lod
+        for ln in lines:
+            m = _DEP_HEADER.match(ln.strip())
+            if not m:
+                continue
+            value = m.group(2)
+            conds = _TOC_COND.findall(value)
+            if not all(_cond_ok(f, c, v) for c, v in conds):
+                continue
+            names = {n.strip().lower() for n in _TOC_COND.sub("", value).split(",") if n.strip()}
+            (loadwith if m.group(1).lower() == "loadwith" else deps).setdefault(name, set()).update(
+                names
+            )
+    always = {n for n, lod in lod_flag.items() if not lod}
+    changed = True
+    while changed:
+        changed = False
+        for n in list(always):
+            for d in deps.get(n, ()):
+                if d in lod_flag and d not in always:
+                    always.add(d)
+                    changed = True
+        for n, targets in loadwith.items():
+            if n not in always and targets & always:
+                always.add(n)
+                changed = True
+    return always
 
 
 def expand_tokens(f: Flavor, ref: str) -> list[str]:
