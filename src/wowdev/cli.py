@@ -2,7 +2,8 @@
 
     wowdev setup                     install tools + fetch upstream + build index
     wowdev refresh                   update upstream and rebuild the index
-    wowdev status                    index age and each client's version/interface
+    wowdev status [--game]           index age, each client's version/interface
+                                     (--game: vs the game PC's installed builds)
     wowdev api NAME [NAME...]        availability matrix (and detail for one name)
     wowdev check [ADDON...]          the full static gate (default: every addon)
     wowdev scan ADDON...             cross-flavor API check only
@@ -116,7 +117,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("setup")
     r = sub.add_parser("refresh")
     r.add_argument("--offline", action="store_true", help="rebuild without fetching")
-    sub.add_parser("status")
+    stp = sub.add_parser("status")
+    stp.add_argument(
+        "--game", action="store_true", help="also compare the game PC's installed builds"
+    )
     a = sub.add_parser("api")
     a.add_argument("names", nargs="+")
     a.add_argument("--flavor", action="append")
@@ -190,6 +194,10 @@ def main(argv: list[str] | None = None) -> int:
                 f"  {k:20} {f['label']:16} {f['version']:8} build {f['build']:6} "
                 f"interface {f['interface']}"
             )
+        if args.game:
+            from . import game
+
+            print(game.format_client_builds(game.client_builds()))
         return 0
     if args.cmd == "spell":
         from .server import wow_spell

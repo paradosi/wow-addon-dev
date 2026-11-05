@@ -251,6 +251,17 @@ def wow_game_errors(
         return {"error": str(e)}
 
 
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
+def wow_game_clients() -> dict:
+    """The game PC's installed clients (from the launcher's .build.info) next
+    to the build this index describes. A mismatch after a patch day means the
+    index is a build behind: availability answers may be stale until upstream
+    publishes the new build and `wowdev refresh` runs."""
+    from . import game
+
+    return {"host": game.HOST, "clients": game.client_builds()}
+
+
 @mcp.tool(annotations=READ_ONLY)
 def wow_search(
     query: str, kind: str | None = None, flavor: str | None = None, limit: int = 20

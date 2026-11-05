@@ -97,6 +97,63 @@ def installed_clients() -> list[str]:
     return [ln.strip() for ln in ps(script).splitlines() if ln.strip() in CLIENT_DIRS]
 
 
+def installed_builds() -> dict[str, str]:
+    """{product: version} from the install's .build.info, the launcher's own
+    record of what each client is patched to (e.g. wow_anniversary: 2.5.6.70577)."""
+    raw = ps(f"Get-Content -Raw (Join-Path {_q(WOW_ROOT)} '.build.info')")
+    lines = [ln for ln in raw.splitlines() if "|" in ln]
+    if not lines:
+        return {}
+    head = [h.split("!")[0] for h in lines[0].split("|")]
+    out = {}
+    for ln in lines[1:]:
+        row = dict(zip(head, ln.split("|"), strict=False))
+        if row.get("Product") and row.get("Version"):
+            out[row["Product"]] = row["Version"]
+    return out
+
+
+def client_builds() -> list[dict]:
+    """Each installed client's build next to the build the index describes."""
+    from .config import FLAVORS
+    from .index import Index
+
+    fl = Index().flavors
+    by_product = {f.wago_product: f.key for f in FLAVORS.values() if f.wago_product}
+    out = []
+    for product, version in sorted(installed_builds().items()):
+        key = by_product.get(product)
+        row = {"product": product, "installed": version, "flavor": key}
+        if key and key in fl:
+            row["indexed"] = f"{fl[key]['version']}.{fl[key]['build']}"
+            row["current"] = row["indexed"] == version
+            if not row["current"]:
+                v = lambda s: tuple(int(x) for x in s.split(".") if x.isdigit())  # noqa: E731
+                row["behind"] = "client" if v(version) < v(row["indexed"]) else "index"
+        out.append(row)
+    return out
+
+
+def format_client_builds(rows: list[dict]) -> str:
+    out = [f"# game clients on {HOST}"]
+    for r in rows:
+        if not r["flavor"]:
+            out.append(f"  {r['product']:18} {r['installed']:16} not indexed")
+        elif r["current"]:
+            out.append(f"  {r['product']:18} {r['installed']:16} = index ({r['flavor']})")
+        elif r["behind"] == "client":
+            out.append(
+                f"! {r['product']:18} {r['installed']:16} older than the live build "
+                f"{r['indexed']} ({r['flavor']}): patch the client in Battle.net before testing"
+            )
+        else:
+            out.append(
+                f"! {r['product']:18} {r['installed']:16} newer than the index's "
+                f"{r['indexed']} ({r['flavor']}): run `wowdev refresh` once upstream has it"
+            )
+    return "\n".join(out)
+
+
 def present_in(pkg: str, flavors: list[str]) -> set[str]:
     """Flavors among `flavors` whose client already has Interface/AddOns/<pkg>."""
     script = "; ".join(

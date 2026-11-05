@@ -29,6 +29,9 @@ Python + `mcp` 2.x (`MCPServer`, not v1's `FastMCP`). Runtime deps outside Pytho
   Everything is one `ssh northpc powershell -EncodedCommand` per step, files come back
   base64. Deploy only replaces an existing install by default, and backs up the user's
   own copy once (outside `AddOns`). BugGrabber only writes at logout or `/reload`.
+- **`wowdev status --game` / `wow_game_clients`** read the launcher's `.build.info` on the
+  game PC (product codes = `Flavor.wago_product`). Check it before an in-game test: on
+  2026-11-05 every client on northpc was still on its June/July build.
 - **Spells are `spells.py`** (`wowdev spell`, MCP `wow_spell`): wago.tools DB2 CSVs of the
   index's own builds. Products: `wow`, `wow_anniversary`, `wow_classic_era`, `wowf`
   (`Flavor.wago_product`). A wago failure warns and keeps the cache; never make it fatal.

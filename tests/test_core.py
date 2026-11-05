@@ -320,3 +320,31 @@ def test_restricted_apis_reported_only_where_secrets_exist(tmp_path: Path):
     assert set(live) == {"CHAT_MSG_WHISPER", "UnitName"}
     assert live["CHAT_MSG_WHISPER"]["at"] == "core.lua:2"
     assert r["flavors"]["classic_anniversary"]["restricted"] == {}
+
+
+def test_client_builds_compares_build_info(monkeypatch):
+    from wowdev import game
+    from wowdev.index import Index
+
+    info = (
+        "Branch!STRING:0|Active!DEC:1|Version!STRING:0|Product!STRING:0\n"
+        "us|1|2.5.5.68101|wow_anniversary\nus|1|12.2.0.1|wow\nus|1|5.5.4.1|wow_classic\n"
+    )
+    monkeypatch.setattr(game, "ps", lambda script, timeout=120: info)
+    assert game.installed_builds() == {
+        "wow_anniversary": "2.5.5.68101",
+        "wow": "12.2.0.1",
+        "wow_classic": "5.5.4.1",
+    }
+    monkeypatch.setattr(
+        Index,
+        "flavors",
+        {
+            "classic_anniversary": {"version": "2.5.6", "build": "70577"},
+            "live": {"version": "12.1.5", "build": "70783"},
+        },
+    )
+    rows = {r["product"]: r for r in game.client_builds()}
+    assert rows["wow_anniversary"]["behind"] == "client"
+    assert rows["wow"]["behind"] == "index"
+    assert rows["wow_classic"]["flavor"] is None
