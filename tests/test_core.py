@@ -348,3 +348,33 @@ def test_client_builds_compares_build_info(monkeypatch):
     assert rows["wow_anniversary"]["behind"] == "client"
     assert rows["wow"]["behind"] == "index"
     assert rows["wow_classic"]["flavor"] is None
+
+
+def test_taint_log_grouped_and_filtered(monkeypatch):
+    import base64
+
+    from wowdev import game
+
+    log = (
+        "11/5 20:31:02.123  An action was blocked in combat because of taint from "
+        "FloTotemBar - FloBarEARTHButton1:Show()\n"
+        "11/5 20:31:02.123      Interface/AddOns/FloTotemBar/FloLib.lua:500 FloLib_Setup()\n"
+        "11/5 20:31:02.123      Interface/AddOns/FloTotemBar/FloTotemBar.lua:120\n"
+        "11/5 20:31:05.500  An action was blocked in combat because of taint from "
+        "FloTotemBar - FloBarEARTHButton1:Show()\n"
+        "11/5 20:31:05.500      Interface/AddOns/FloTotemBar/FloLib.lua:500 FloLib_Setup()\n"
+        "11/5 20:32:00.000  Global variable FOO tainted by OtherAddon - "
+        "Interface/AddOns/OtherAddon/x.lua:3\n"
+    )
+    out = (
+        'CVAR SET taintLog "1"\nTIME 2026-11-05T20:33:00\n'
+        + base64.b64encode(log.encode()).decode()
+    )
+    monkeypatch.setattr(game, "ps", lambda script, timeout=120: out)
+    r = game.taint("FloTotemBar", "classic_anniversary")
+    assert r["total"] == 3 and r["blocked"] == 2
+    (g,) = r["entries"]
+    assert g["count"] == 2 and g["last"].startswith("11/5 20:31:05")
+    assert g["stack"][0].startswith("Interface/AddOns/FloTotemBar/FloLib.lua:500")
+    assert r["taintLog_cvar"] == 'SET taintLog "1"'
+    assert len(game.taint(None, "classic_anniversary")["entries"]) == 2

@@ -252,6 +252,22 @@ def wow_game_errors(
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
+def wow_game_taint(addon: str | None = None, flavor: str = "classic_anniversary") -> dict:
+    """The client's Logs/taint.log on the game PC, grouped into entries
+    (headline + stack), filtered to those naming `addon`, repeats counted.
+    `blocked` counts "action was blocked" entries: the ones players see as
+    "Interface action failed because of an AddOn". The log exists only after
+    `/console taintLog 1` (2 also logs every tainted read) and a /reload."""
+    from . import game
+    from .config import resolve_flavor
+
+    try:
+        return game.taint(addon, resolve_flavor(flavor))
+    except game.GameHostError as e:
+        return {"error": str(e)}
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
 def wow_game_clients() -> dict:
     """The game PC's installed clients (from the launcher's .build.info) next
     to the build this index describes. A mismatch after a patch day means the

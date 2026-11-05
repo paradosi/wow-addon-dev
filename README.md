@@ -131,6 +131,7 @@ wowdev deploy ADDON [--flavor F] build and install into the game PC's clients
 wowdev restore ADDON [--flavor F] put back the install the first deploy replaced
 wowdev errors [ADDON] [--flavor F] [--sessions N|--all] [-v] [--json]
                                  Lua errors BugGrabber saved on the game PC
+wowdev taint [ADDON] [--flavor F] [-v] the client's taint.log, grouped, for one addon
 wowdev spell ID|NAME [--flavor F] spell id, rank, duration and school per client
 wowdev mcp                       run the MCP server on stdio
 ```
@@ -206,7 +207,7 @@ git -C iChat commit -am "v1.4.11: …" && git -C iChat tag v1.4.11 && git -C iCh
 
 ## MCP server
 
-Sixteen tools, all read-only (annotated `readOnlyHint`):
+Seventeen tools, all read-only (annotated `readOnlyHint`):
 
 | Tool | Answers |
 |---|---|
@@ -223,6 +224,7 @@ Sixteen tools, all read-only (annotated `readOnlyHint`):
 | `wow_check_addon` | the cross-flavor scan of an addon directory |
 | `wow_check_gate` | the whole `./check` gate for one addon |
 | `wow_addons` | the addons under `~/projects/wowaddons`: package-as name, version, targeted clients |
+| `wow_game_taint` | the client's `Logs/taint.log` on the game PC, grouped into headline + stack, filtered to one addon, repeats counted, blocked actions totalled (`openWorldHint`) |
 | `wow_game_clients` | the game PC's installed builds (launcher `.build.info`) next to the index's: says whether the client needs patching or the index is a build behind (`openWorldHint`) |
 | `wow_game_errors` | Lua errors BugGrabber saved in a client on the game PC, filtered to one addon and the last N sessions (reaches `northpc` over ssh, so `openWorldHint`) |
 
@@ -270,7 +272,7 @@ src/wowdev/
   check.py     the gate: syntax, luacheck, toc, api (+ types, package)
   spells.py    wago.tools DB2 exports (SpellName, Spell, SpellMisc, SpellDuration) per build
   game.py      live loop over ssh + PowerShell: deploy / restore / BugGrabber errors
-  server.py    MCP server (mcp 2.x MCPServer), 16 read-only tools
+  server.py    MCP server (mcp 2.x MCPServer), 17 read-only tools
   cli.py       `wowdev` subcommands; `setup` installs pinned tools
 tests/test_core.py
 ```

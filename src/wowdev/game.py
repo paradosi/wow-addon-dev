@@ -359,23 +359,117 @@ if (-not $f) {{ 'NONE'; return }}
     return path, when, db
 
 
+def _pkg(addon: str | None) -> str | None:
+    """Installed folder name for a repo dir / name under ~/projects/wowaddons."""
+    if not addon:
+        return None
+    from .check import ADDONS_DIR
+    from .package import package_as
+
+    d = Path(addon).expanduser()
+    d = d if d.is_dir() else ADDONS_DIR / addon
+    return package_as(d) if d.is_dir() else addon
+
+
+# taint.log: "11/5 20:31:02.123  <headline>" then indented stack lines with the
+# same timestamp prefix
+_TAINT_LINE = re.compile(r"^\d+/\d+ \d+:\d+:\d+\.\d+  ?(.*)$")
+_TAINT_NUM = re.compile(r"\b0x[0-9a-f]+\b|\b\d+\b")
+
+
+def parse_taint(text: str) -> list[dict]:
+    """Group a taint.log into entries: {time, headline, stack}."""
+    out: list[dict] = []
+    for raw in text.splitlines():
+        m = _TAINT_LINE.match(raw)
+        body = m.group(1) if m else raw
+        if not body.strip():
+            continue
+        if body[:1].isspace() and out:
+            out[-1]["stack"].append(body.strip())
+        else:
+            out.append(
+                {"time": raw.split("  ")[0] if m else "", "headline": body.strip(), "stack": []}
+            )
+    return out
+
+
+def taint(addon: str | None = None, flavor: str = "classic_anniversary", tail: int = 20000) -> dict:
+    """The client's Logs/taint.log (last `tail` lines), grouped, filtered to
+    entries naming `addon`, with repeats counted. Also reports whether the
+    taintLog CVar is saved in Config.wtf."""
+    if flavor not in CLIENT_DIRS:
+        raise GameHostError(f"no client folder known for {flavor}")
+    pkg = _pkg(addon)
+    base = rf"{WOW_ROOT}\{CLIENT_DIRS[flavor]}"
+    script = f"""
+$c = {_q(base + r"\WTF\Config.wtf")}
+if (Test-Path $c) {{ Select-String -Path $c -Pattern '^SET taintLog' | % {{ 'CVAR ' + $_.Line }} }}
+$f = {_q(base + r"\Logs\taint.log")}
+if (-not (Test-Path $f)) {{ 'NONE'; return }}
+'TIME ' + (Get-Item $f).LastWriteTime.ToString('s')
+$t = (Get-Content $f -Tail {int(tail)} -Encoding UTF8) -join "`n"
+[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($t))
+"""
+    lines = ps(script, timeout=180).splitlines()
+    cvar = next((ln[5:].strip() for ln in lines if ln.startswith("CVAR ")), None)
+    rest = [ln for ln in lines if not ln.startswith("CVAR ")]
+    res: dict = {"flavor": flavor, "addon": pkg, "taintLog_cvar": cvar, "entries": []}
+    if not rest or rest[0].strip() == "NONE":
+        res["log"] = None
+        return res
+    res["log"] = base + r"\Logs\taint.log"
+    res["written"] = rest[0][5:].strip()
+    entries = parse_taint(base64.b64decode("".join(rest[1:])).decode("utf-8", "replace"))
+    res["total"] = len(entries)
+    needle = (
+        re.compile(rf"(\b{re.escape(pkg)}\b|AddOns[\\/]{re.escape(pkg)}[\\/])", re.I)
+        if pkg
+        else None
+    )
+    groups: dict[str, dict] = {}
+    for e in entries:
+        if needle and not needle.search(e["headline"] + "\n" + "\n".join(e["stack"])):
+            continue
+        key = _TAINT_NUM.sub("#", e["headline"])
+        g = groups.setdefault(key, {**e, "count": 0})
+        g["count"] += 1
+        g["last"] = e["time"]
+    res["entries"] = sorted(groups.values(), key=lambda g: -g["count"])
+    res["blocked"] = sum(g["count"] for g in groups.values() if "blocked" in g["headline"].lower())
+    return res
+
+
+def format_taint(r: dict, verbose: bool = False) -> str:
+    who = r["addon"] or "all addons"
+    out = [f"# taint.log, {r['flavor']}, {who}"]
+    cv = r["taintLog_cvar"]
+    if r["log"] is None:
+        out.append("no Logs\\taint.log in this client.")
+        out.append("Turn logging on in game: /console taintLog 1  (2 = also every tainted read),")
+        out.append("then /reload, reproduce, and /reload or log out to flush it.")
+        return "\n".join(out)
+    out.append(f"{r['log']}  written {r['written']}  ({r['total']} entries in the tail read)")
+    out.append(f"taintLog in Config.wtf: {cv or 'not saved (may still be on for this session)'}")
+    if not r["entries"]:
+        out.append(f"  nothing that names {who}")
+    for g in r["entries"]:
+        out.append(f"  {g['count']:>4}x  {g['headline'][:200]}   (last {g['last']})")
+        for s in g["stack"][: (12 if verbose else 3)]:
+            out.append(f"          {s[:200]}")
+    return "\n".join(out)
+
+
 def errors(
     addon: str | None = None, flavor: str = "classic_anniversary", sessions: int | None = 1
 ) -> dict:
     """Errors BugGrabber saved for `flavor`, newest first. `addon` is a folder
     name as installed (package-as) or a repo directory; errors whose message or
     stack mention Interface/AddOns/<it>/ are kept. sessions=None: every session."""
-    from .package import package_as
 
     if flavor not in CLIENT_DIRS:
         raise GameHostError(f"no client folder known for {flavor}")
-    pkg = None
-    if addon:
-        from .check import ADDONS_DIR
-
-        d = Path(addon).expanduser()
-        d = d if d.is_dir() else ADDONS_DIR / addon
-        pkg = package_as(d) if d.is_dir() else addon
+    pkg = _pkg(addon)
     path, when, db = _bug_grabber(flavor)
     current = int(db.get("session") or 0)
     errs = db.get("errors") or []

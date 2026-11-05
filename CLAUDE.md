@@ -29,6 +29,11 @@ Python + `mcp` 2.x (`MCPServer`, not v1's `FastMCP`). Runtime deps outside Pytho
   Everything is one `ssh northpc powershell -EncodedCommand` per step, files come back
   base64. Deploy only replaces an existing install by default, and backs up the user's
   own copy once (outside `AddOns`). BugGrabber only writes at logout or `/reload`.
+- **`wowdev taint` / `wow_game_taint`** read `<client>\Logs\taint.log`. It exists only
+  after `/console taintLog 1` in game plus a /reload. The parser was written to Blizzard's
+  documented shape (timestamped headline, indented stack) and tested on a sample:
+  **no real taint.log had been read when it was written (2026-11-05)**, so check the
+  first real one against `parse_taint` and fix the parser if they differ.
 - **`wowdev status --game` / `wow_game_clients`** read the launcher's `.build.info` on the
   game PC (product codes = `Flavor.wago_product`). Check it before an in-game test: on
   2026-11-05 every client on northpc was still on its June/July build.

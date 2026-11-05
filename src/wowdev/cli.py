@@ -16,6 +16,7 @@
     wowdev restore ADDON [--flavor F] put back the install the first deploy replaced
     wowdev errors [ADDON] [--flavor F] [--sessions N|--all] [-v]
                                      Lua errors BugGrabber saved on the game PC
+    wowdev taint [ADDON] [--flavor F] [-v]  the client's taint.log, grouped, for one addon
     wowdev spell ID|NAME [--flavor F] spell id, rank, duration and school per client
     wowdev mcp                       run the MCP server on stdio
 
@@ -163,6 +164,11 @@ def main(argv: list[str] | None = None) -> int:
     er.add_argument("--all", action="store_true", help="every session in the file")
     er.add_argument("-v", "--verbose", action="store_true", help="full stacks and locals")
     er.add_argument("--json", action="store_true")
+    tn = sub.add_parser("taint")
+    tn.add_argument("addon", nargs="?")
+    tn.add_argument("--flavor", default="classic_anniversary")
+    tn.add_argument("-v", "--verbose", action="store_true", help="longer stacks")
+    tn.add_argument("--json", action="store_true")
     sp = sub.add_parser("spell")
     sp.add_argument("query", help="spell id or name")
     sp.add_argument("--flavor", action="append")
@@ -281,13 +287,13 @@ def main(argv: list[str] | None = None) -> int:
             print(package.format_result(res))
             rc = rc or (1 if any(f.level == "error" for f in res.findings) else 0)
         return rc
-    if args.cmd in ("deploy", "restore", "errors"):
+    if args.cmd in ("deploy", "restore", "errors", "taint"):
         from . import game
         from .config import resolve_flavor
 
         flavors = (
             [resolve_flavor(f) for f in (getattr(args, "flavor", None) or [])]
-            if args.cmd != "errors"
+            if args.cmd not in ("errors", "taint")
             else None
         )
         try:
@@ -299,6 +305,10 @@ def main(argv: list[str] | None = None) -> int:
                 for f, msg in game.restore(_addons([args.addon])[0], flavors).items():
                     print(f"  {f:20} {msg}")
                 return 0
+            if args.cmd == "taint":
+                r = game.taint(args.addon, resolve_flavor(args.flavor))
+                print(json.dumps(r, indent=1) if args.json else game.format_taint(r, args.verbose))
+                return 1 if r.get("blocked") else 0
             r = game.errors(
                 args.addon, resolve_flavor(args.flavor), None if args.all else args.sessions
             )
