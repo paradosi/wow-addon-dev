@@ -1,9 +1,16 @@
 [project]
 name = "wow-api-mcp"
 version = "0.1.0"
-description = "TODO"
+description = "MCP server and toolkit for World of Warcraft addon development: every flavor's API, events, widgets, enums and FrameXML source, indexed"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "mcp>=2.3,<3",
+]
+
+[project.scripts]
+wow-api-mcp = "wow_api_mcp.server:main"
+wow-api-build = "wow_api_mcp.build:main"
+wow-api-scan = "wow_api_mcp.scan:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -24,6 +31,8 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+# `ruff format` owns line length; what it cannot wrap is regex literals
+ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,31 +1,49 @@
 # wow-api-mcp — notes for Claude
 
-<!-- Replace the TODOs. A stale CLAUDE.md is worse than none. -->
-
 ## What this is
 
-TODO: one paragraph — the problem this solves and the shape of the solution.
+An MCP server (stdio, registered user-scope as `wow-api`) plus two CLIs, answering
+"does this WoW API exist, and with what signature, in each client an addon targets?"
+for **Retail (`live`), TBC Anniversary (`classic_anniversary`), Classic Era
+(`classic_era`) and WoW Forever (`forever`)**. It is the reference layer for the addons
+in `~/projects/wowaddons`.
+
+`wow-api-build` clones upstream into `~/data/wow-api/upstream/` and builds
+`~/data/wow-api/index.sqlite`; `wow-api-scan` checks an addon directory against it.
 
 ## Stack
 
-`python` — see the `justfile` for the canonical commands. Prefer `just <recipe>`
-over invoking tools directly, so there is one definition of how this project builds.
+`python` + `mcp` 2.x (`MCPServer`, not v1's `FastMCP`). `lua5.1` and `luac5.1` are
+runtime dependencies: the first evaluates Blizzard's data tables, the second compiles
+addon and Blizzard Lua to bytecode listings for the scanner. `just refresh` / `just
+build` / `just scan <dir>` / `just test`.
 
 ## Conventions
 
-- TODO: naming, module boundaries, anything a newcomer would get wrong.
+- Flavor keys **are** the upstream branch names (wow-ui-source and
+  BlizzardInterfaceResources share them). Adding a flavor is one `Flavor(...)` entry in
+  `config.py` + `just refresh`.
+- Presence of a row in `api` (kind, name, flavor) *is* availability. Blizzard-Lua
+  definitions live in `def`, with `deprecated` / `lod` flags.
 
 ## Gotchas
 
-- TODO: the things that have already bitten someone.
+- **Blizzard's UI tree for one client contains files for other clients.** Which files
+  load is decided by TOC suffix (`_Classic.toc` covers every Classic client) and
+  `[AllowLoadGameType ...]` per line. `loaded_files()` follows that; scanning the tree
+  blindly credits retail with Classic's deprecation shims.
+- Blizzard creates globals inside function bodies (`DEFAULT_CHAT_FRAME = ChatFrame1`)
+  and via `_G.X = ...`. Only bytecode (`SETGLOBAL`) sees all of them — don't go back to
+  regex for plain globals.
+- Forever's game type `camelot` is inferred from its TOCs, not documented.
+- GlobalStrings is parsed line by line in Python: upstream has shipped a malformed line.
+- Ketho annotations are retail-oriented. Classic signatures can differ; confirm in source.
+- The scanner's "guarded" means *inside a feature test of a global*. A local flag
+  (`if isClassic then`) is not recognised, so such references can show as MISSING.
 
 ## Secrets
 
-`.env` is gitignored; `.env.example` is **not**. Real values go in `.env` only — a live
-API key was once committed from an example file on this host, because the variable was
-documented there and nowhere else. If this project reads a key, make sure something
-actually loads `.env` (Node: `process.loadEnvFile`; Python: `uv run --env-file`), or the
-example file becomes the only place a key looks like it belongs.
+None. Everything read is public upstream data.
 
 ## Host
 
