@@ -28,7 +28,11 @@ Before using any API in addon code, check it with wow_compat or wow_lookup
 for every flavor the addon's TOCs target. Statuses: native (C API),
 blizzard_ui (defined by Blizzard Lua/XML), load_on_demand,
 deprecated_shim (Blizzard_Deprecated fallback; will be removed), absent.
-wow_check_addon runs the whole-addon version of that check.
+wow_check_addon runs the whole-addon version of that check; wow_check_gate
+runs every static pass (syntax, luacheck, TOC lint, API scan) and is the
+pre-commit gate for the addons in ~/projects/wowaddons (see wow_addons).
+Release and packaging steps are CLI-only (`wowdev bump|interface|package`),
+so changes to addon files stay deliberate.
 
 Signatures come from Blizzard's APIDocumentation where it exists (typed,
 mostly C_* namespaces), else from Ketho's wiki-derived annotations, which
@@ -105,7 +109,7 @@ def wow_status() -> dict:
         "built_at": built,
         "age_hours": round(age_h, 1),
         "stale": age_h > 24 * 8,
-        "refresh": "just refresh  (in ~/projects/wow-api-mcp)",
+        "refresh": "just refresh  (in ~/projects/wow-addon-dev)",
         "flavors": {
             k: {
                 "label": f["label"],
@@ -467,6 +471,48 @@ def wow_check_addon(path: str, flavors: list[str] | None = None, include_libs: b
         return format_report(scan(Path(path), flavors, include_libs))
     except (FileNotFoundError, ValueError) as e:
         return f"error: {e}"
+
+
+@mcp.tool(annotations=READ_ONLY)
+def wow_check_gate(addon: str, types: bool = False) -> str:
+    """The full static gate for one addon — what `./check` runs in
+    ~/projects/wowaddons: syntax (luac), luacheck (undefined-variable is an
+    error), TOC lint (version consistency, listed files, interface numbers,
+    texture paths vs package-as) and the cross-flavor API scan. `types` adds
+    a lua-language-server pass (advisory: annotations are retail-oriented).
+    `addon` is a path or a directory name under ~/projects/wowaddons."""
+    from .check import format_report, resolve_addon, run
+
+    try:
+        rep = run(resolve_addon(addon), types=types)
+    except (FileNotFoundError, ValueError) as e:
+        return f"error: {e}"
+    verdict = "FAIL" if rep.errors else "pass"
+    return format_report(rep, verbose=True, limit=60) + f"\n\ngate: {verdict}"
+
+
+@mcp.tool(annotations=READ_ONLY)
+def wow_addons() -> dict:
+    """The addons under ~/projects/wowaddons: directory, installed folder name
+    (package-as), version, and the clients each TOC targets."""
+    from .check import discover
+    from .scan import read_toc as scan_toc
+    from .toc import package_as, tocs
+
+    out = {}
+    for a in discover():
+        ts = tocs(a)
+        out[a.name] = {
+            "package_as": package_as(a),
+            "version": next(
+                (t.headers.get("version") for t in ts if t.headers.get("version")), None
+            ),
+            "tocs": {
+                t.path.name: {"interface": t.interfaces, "flavors": scan_toc(t.path, idx).flavors}
+                for t in ts
+            },
+        }
+    return out
 
 
 def main() -> None:

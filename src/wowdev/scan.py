@@ -1,7 +1,7 @@
 """Cross-flavor compatibility scanner for an addon directory.
 
-    uv run wow-api-scan ~/projects/wowaddons/FarmMode
-    uv run wow-api-scan ~/projects/wowaddons/iChat --flavor classic_era --json
+    wowdev scan FarmMode
+    wowdev scan iChat --flavor classic_era --json
 
 Reads the addon's TOCs to learn which clients it targets, follows each TOC
 (and the XML it includes) to the Lua files that client would load, compiles
@@ -16,11 +16,8 @@ and immediately TESTed is a truthiness check, which is how the
 
 from __future__ import annotations
 
-import argparse
-import json
 import re
 import subprocess
-import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -61,10 +58,13 @@ class TocInfo:
 # ------------------------------------------------------------------ TOC handling
 
 
-def _flavor_key_for_interface(iface: int, idx: Index) -> str | None:
-    def bucket(n: int) -> int:
-        return n // 10000 * 100 if n >= 100000 else n // 100
+def bucket(n: int) -> int:
+    """Interface number -> client family: 11508/11509 -> 115, 20505 -> 205,
+    16001 -> 160 (Forever), 120001/120105 -> 1200 (every 12.x retail patch)."""
+    return n // 10000 * 100 if n >= 100000 else n // 100
 
+
+def _flavor_key_for_interface(iface: int, idx: Index) -> str | None:
     target = bucket(iface)
     for key, f in idx.flavors.items():
         if f["interface"] and bucket(f["interface"]) == target:
@@ -134,49 +134,92 @@ class _Ins:
     comment: str
 
 
+# a field named like a flavor flag: Postal.WOWRetail, ns.isClassic, addon.IsTBC
+_FLAVOR_FLAG = re.compile(
+    r"^(is|has)?_?(wow)?_?(retail|mainline|classic|era|vanilla|bc|bcc|tbc|anniversary|"
+    r"wotlk|wrath|cata|mists|mop|sod|hardcore|forever|camelot)",
+    re.I,
+)
+# globals whose comparison is a client/version test
+_VERSION_PROBES = {
+    "GetBuildInfo",
+    "WOW_PROJECT_ID",
+    "WOW_PROJECT_MAINLINE",
+    "WOW_PROJECT_CLASSIC",
+    "WOW_PROJECT_BURNING_CRUSADE_CLASSIC",
+    "WOW_PROJECT_WRATH_CLASSIC",
+    "WOW_PROJECT_CATACLYSM_CLASSIC",
+    "WOW_PROJECT_MISTS_CLASSIC",
+    "WOW_PROJECT_CAMELOT",
+    "LE_EXPANSION_LEVEL_CURRENT",
+    "GetExpansionLevel",
+    "GetClassicExpansionLevel",
+    "GetServerExpansionLevel",
+    "IsClassic",
+    "IsRetail",
+}
+
+
+def _tested_regs(ins: _Ins) -> set[int]:
+    if ins.op == "TEST":
+        return {ins.args[0]}
+    if ins.op == "TESTSET":
+        return {ins.args[1]}
+    return {a for a in ins.args[1:] if a >= 0}  # EQ/LT/LE: B and C (RK; constants < 0)
+
+
 def _guarded_pcs(fn: list[_Ins]) -> tuple[set[int], set[str]]:
-    """Instruction pcs that only run when a global feature test passed or
-    failed, and the names tested. A feature test is a GETGLOBAL (optionally
-    followed by one GETTABLE of a constant key) whose register feeds a
-    TEST/EQ/LT/LE, then a JMP: everything up to the jump target is
-    conditional, and if the instruction just before the target is itself a
-    forward JMP (end of a then-block), the else-arm is conditional too. This
-    covers `if C_X then`, `if not C_X then`, `C_X and C_X.F or F` and
-    `if WOW_PROJECT_ID == WOW_PROJECT_CLASSIC then`."""
+    """Instruction pcs that only run when a feature test passed or failed,
+    and the global names that were tested.
+
+    A feature test is a TEST/EQ/LT/LE followed by JMP whose operand, on the
+    same source line, came from: a global (`if C_X then`, `C_X and C_X.F or
+    F`), a field named like a flavor flag (`if Postal.WOWRetail then`), or a
+    comparison involving a version probe (`select(4, GetBuildInfo()) >=
+    110000`, `WOW_PROJECT_ID == WOW_PROJECT_CLASSIC`). Everything up to the
+    jump target is conditional; if the instruction just before the target is
+    a forward JMP (end of a then-block), the else arm is conditional too.
+    Plain locals (`if isClassic then`) are not recognised."""
     by_pc = {i.pc: i for i in fn}
     guarded: set[int] = set()
     tested: set[str] = set()
     for k, ins in enumerate(fn):
-        if ins.op != "GETGLOBAL":
+        if ins.op not in _TEST_OPS or k + 1 >= len(fn) or fn[k + 1].op != "JMP":
             continue
-        name, reg = ins.comment, ins.args[0]
-        j = k + 1
-        if (
-            j < len(fn)
-            and fn[j].op == "GETTABLE"
-            and fn[j].args[1] == reg
-            and fn[j].comment.startswith('"')
-        ):
-            name = f"{name}.{fn[j].comment.split(chr(34))[1]}"
-            reg = fn[j].args[0]
-            j += 1
-        # comparisons may load the other operand first: look a few ahead
-        for t in range(j, min(j + 3, len(fn))):
-            if fn[t].op in _TEST_OPS and (reg in fn[t].args or fn[t].op != "TEST"):
-                break
-            if fn[t].op not in ("GETGLOBAL", "GETTABLE", "LOADK", "LOADNIL", "LOADBOOL"):
-                t = None
-                break
-        else:
-            t = None
-        if t is None or t + 1 >= len(fn) or fn[t + 1].op != "JMP":
+        regs = _tested_regs(ins)
+        names: list[str] = []
+        is_guard = False
+        back = [fn[j] for j in range(max(0, k - 8), k) if fn[j].line == ins.line]
+        for j, b in enumerate(back):
+            key = b.comment.split('"')[1] if b.comment.startswith('"') else None
+            if b.op == "GETGLOBAL":
+                nxt = back[j + 1] if j + 1 < len(back) else None
+                composed = (
+                    f"{b.comment}.{nxt.comment.split(chr(34))[1]}"
+                    if nxt
+                    and nxt.op == "GETTABLE"
+                    and nxt.args[1] == b.args[0]
+                    and nxt.comment.startswith('"')
+                    else None
+                )
+                if b.args[0] in regs or (composed and nxt.args[0] in regs):
+                    is_guard = True
+                    names.append(b.comment)
+                    if composed:
+                        names.append(composed)
+                if b.comment in _VERSION_PROBES and ins.op != "TEST":
+                    is_guard = True
+            elif b.op in ("GETTABLE", "SELF") and key and _FLAVOR_FLAG.match(key):
+                if b.args[0] in regs or b.op == "SELF":
+                    is_guard = True
+        if not is_guard:
             continue
-        jmp = fn[t + 1]
+        tested.update(names)
+        tested.update(n.split(".")[0] for n in names)
+        jmp = fn[k + 1]
         target = jmp.pc + 1 + jmp.args[0]
         if target <= jmp.pc:
             continue
-        tested.add(name)
-        tested.add(name.split(".")[0])
         end = target
         before = by_pc.get(target - 1)
         if before and before.op == "JMP" and before.pc + 1 + before.args[0] > target:
@@ -187,15 +230,27 @@ def _guarded_pcs(fn: list[_Ins]) -> tuple[set[int], set[str]]:
 
 def analyse(path: Path, rel: str, namespaces: set[str]) -> tuple[list[Ref], set[str], set[str]]:
     """-> (references, globals this file defines, table keys this file sets)."""
-    p = subprocess.run(
-        [LUAC, "-l", "-p", str(path)],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    data = path.read_bytes()
+    tmp = None
+    if data.startswith(b"\xef\xbb\xbf"):  # luac5.1 rejects a BOM the client accepts
+        import tempfile
+
+        with tempfile.NamedTemporaryFile("wb", suffix=".lua", delete=False) as t:
+            t.write(data[3:])
+        tmp = Path(t.name)
+    try:
+        p = subprocess.run(
+            [LUAC, "-l", "-p", str(tmp or path)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    finally:
+        if tmp:
+            tmp.unlink(missing_ok=True)
     if p.returncode:
-        raise SyntaxError(p.stderr.strip())
+        raise SyntaxError(p.stderr.strip().replace(str(tmp or path), rel))
 
     funcs: list[tuple[str, list[_Ins]]] = []
     for raw in p.stdout.splitlines():
@@ -447,22 +502,3 @@ def format_report(report: dict) -> str:
         if not (fr["missing"] or fr["deprecated_shim"] or fr["methods_missing"]):
             out.append("  clean: no missing or deprecated API references")
     return "\n".join(out)
-
-
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="wow-api-scan", description=__doc__.splitlines()[0])
-    ap.add_argument("addon", nargs="+", type=Path)
-    ap.add_argument("--flavor", action="append", help="limit to these flavors")
-    ap.add_argument("--include-libs", action="store_true", help="also report findings in Libs/")
-    ap.add_argument("--json", action="store_true")
-    args = ap.parse_args(argv)
-    rc = 0
-    for a in args.addon:
-        r = scan(a, args.flavor, args.include_libs)
-        print(json.dumps(r, indent=1) if args.json else format_report(r))
-        rc = rc or (1 if problems(r) else 0)
-    return rc
-
-
-if __name__ == "__main__":
-    sys.exit(main())

@@ -1,12 +1,13 @@
-# wow-api-mcp
+# wow-addon-dev — the WoW addon development environment
 
 # List available recipes
 default:
     @just --list
 
-# Create the venv and install deps (uv manages .venv automatically)
+# Install deps, pinned tools (LuaLS, packager), fetch upstream, build the index
 setup:
     uv sync
+    uv run wowdev setup
 
 # Run the test suite
 test:
@@ -22,22 +23,22 @@ fmt:
     uv run ruff check --fix .
     uv run ruff format .
 
-# Run the MCP server on stdio (what Claude Code launches)
-run *ARGS:
-    uv run python -m wow_api_mcp {{ARGS}}
-
-# Fetch upstream (wow-ui-source, BlizzardInterfaceResources, Ketho annotations) and rebuild the index
+# Update upstream data and rebuild the index
 refresh:
-    uv run wow-api-build
+    uv run wowdev refresh
 
 # Rebuild the index from upstream data already on disk
 build:
-    uv run wow-api-build --offline
+    uv run wowdev refresh --offline
 
-# Cross-flavor API check of one or more addon directories (args: paths, --flavor X, --json)
-scan +ARGS:
-    uv run wow-api-scan {{ARGS}}
+# The full static gate on addons (default all); add --types / --package
+check *ARGS:
+    uv run wowdev check {{ARGS}}
 
-# Scan every addon in ~/projects/wowaddons
-scan-all:
-    uv run wow-api-scan ~/projects/wowaddons/*/
+# Any wowdev subcommand: just wowdev api UnitAura
+wowdev *ARGS:
+    uv run wowdev {{ARGS}}
+
+# Run the MCP server on stdio (what Claude Code launches)
+run:
+    uv run wowdev mcp

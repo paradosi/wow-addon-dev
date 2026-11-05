@@ -36,7 +36,7 @@ class Index:
     def db(self) -> sqlite3.Connection:
         if not self.path.exists():
             raise FileNotFoundError(
-                f"no index at {self.path} — run `just refresh` in the wow-api-mcp project"
+                f"no index at {self.path} — run `just refresh` in the wow-addon-dev project"
             )
         mtime = self.path.stat().st_mtime
         if self._db is None or mtime != self._mtime:  # rebuilt underneath us: reopen
@@ -55,6 +55,14 @@ class Index:
     @cached_property
     def flavors(self) -> dict[str, dict]:
         return {r["key"]: dict(r) for r in self.q("SELECT * FROM flavor ORDER BY rowid")}
+
+    def current_interfaces(self) -> dict[int, int]:
+        """{interface bucket: the client's current interface number}."""
+        from .scan import bucket
+
+        return {
+            bucket(f["interface"]): f["interface"] for f in self.flavors.values() if f["interface"]
+        }
 
     def meta(self) -> dict[str, str]:
         return {r["key"]: r["value"] for r in self.q("SELECT key, value FROM meta")}

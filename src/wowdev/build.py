@@ -1,7 +1,7 @@
 """Fetch upstream data and build the SQLite index.
 
-    uv run wow-api-build            # fetch/update upstream, then rebuild
-    uv run wow-api-build --offline  # rebuild from what is already on disk
+    wowdev refresh            # fetch/update upstream, then rebuild
+    wowdev refresh --offline  # rebuild from what is already on disk
 
 The index is written to a temp file and renamed into place, so a running
 server never sees a half-built database (it reopens on the next call).
@@ -24,6 +24,7 @@ from .config import (
     DB_PATH,
     DUMP_LUA,
     FLAVORS,
+    FXA_URL,
     KETHO_URL,
     LUA,
     UI_SOURCE_URL,
@@ -87,6 +88,7 @@ def fetch() -> None:
     for f in FLAVORS.values():
         _sync(UI_SOURCE_URL, f.key, f.ui_dir, sparse="Interface")
         _sync(BIR_URL, f.key, f.bir_dir)
+        _sync(FXA_URL, f.key, UPSTREAM_DIR / f"fxa-{f.key}")  # FrameXML types for LuaLS
     _sync(KETHO_URL, "master", UPSTREAM_DIR / "ketho-annotations")
 
 
@@ -640,7 +642,7 @@ def build() -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="wow-api-build", description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(prog="wowdev refresh", description=__doc__.splitlines()[0])
     ap.add_argument("--offline", action="store_true", help="skip git fetch, rebuild only")
     args = ap.parse_args(argv)
     if not args.offline:

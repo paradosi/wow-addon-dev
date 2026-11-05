@@ -1,45 +1,56 @@
-# wow-api-mcp — notes for Claude
+# wow-addon-dev — notes for Claude
 
 ## What this is
 
-An MCP server (stdio, registered user-scope as `wow-api`) plus two CLIs, answering
-"does this WoW API exist, and with what signature, in each client an addon targets?"
-for **Retail (`live`), TBC Anniversary (`classic_anniversary`), Classic Era
-(`classic_era`) and WoW Forever (`forever`)**. It is the reference layer for the addons
-in `~/projects/wowaddons`.
+The WoW addon development environment for `~/projects/wowaddons`: an API index of
+four clients (Retail `live`, TBC Anniversary `classic_anniversary`, Classic Era
+`classic_era`, WoW Forever `forever`), a cross-flavor scanner, the `./check` gate,
+release tooling (bump / interface / package) and an MCP server (user scope, name
+`wow`, 13 read-only tools). One CLI, `wowdev`, on PATH via `~/bin/wowdev`.
 
-`wow-api-build` clones upstream into `~/data/wow-api/upstream/` and builds
-`~/data/wow-api/index.sqlite`; `wow-api-scan` checks an addon directory against it.
+Data lives in `~/data/wowdev/`: `upstream/` (shallow clones), `index.sqlite`,
+`tools/` (LuaLS, BigWigs packager, pinned), `releases/` (local package builds).
 
 ## Stack
 
-`python` + `mcp` 2.x (`MCPServer`, not v1's `FastMCP`). `lua5.1` and `luac5.1` are
-runtime dependencies: the first evaluates Blizzard's data tables, the second compiles
-addon and Blizzard Lua to bytecode listings for the scanner. `just refresh` / `just
-build` / `just scan <dir>` / `just test`.
+Python + `mcp` 2.x (`MCPServer`, not v1's `FastMCP`). Runtime deps outside Python:
+`lua5.1`, `luac5.1`, `luacheck`, `/usr/bin/rg`, `zip`. `just test`, `just lint`,
+`just refresh`, `just check [ADDON]`.
 
 ## Conventions
 
-- Flavor keys **are** the upstream branch names (wow-ui-source and
-  BlizzardInterfaceResources share them). Adding a flavor is one `Flavor(...)` entry in
-  `config.py` + `just refresh`.
-- Presence of a row in `api` (kind, name, flavor) *is* availability. Blizzard-Lua
-  definitions live in `def`, with `deprecated` / `lod` flags.
+- Flavor keys **are** the upstream branch names (wow-ui-source, BlizzardInterfaceResources
+  and FramexmlAnnotations share them). A new client is one `Flavor(...)` in `config.py`.
+- Presence of an `api` row (kind, name, flavor) *is* availability. Blizzard-Lua
+  definitions live in `def` with `deprecated` / `lod` flags.
+- Anything that writes to an addon repo (`bump`, `interface`) prints a diff and needs
+  `-w`. Those stay CLI-only; the MCP tools are all read-only.
 
 ## Gotchas
 
-- **Blizzard's UI tree for one client contains files for other clients.** Which files
-  load is decided by TOC suffix (`_Classic.toc` covers every Classic client) and
-  `[AllowLoadGameType ...]` per line. `loaded_files()` follows that; scanning the tree
-  blindly credits retail with Classic's deprecation shims.
-- Blizzard creates globals inside function bodies (`DEFAULT_CHAT_FRAME = ChatFrame1`)
-  and via `_G.X = ...`. Only bytecode (`SETGLOBAL`) sees all of them — don't go back to
-  regex for plain globals.
+- **Blizzard's UI tree for one client contains other clients' files.** Which load is
+  decided by TOC suffix (`_Classic.toc` = every Classic client) and `AllowLoadGameType`.
+  `loaded_files()` follows that; walking the tree credits retail with Classic shims.
+- Blizzard creates globals inside function bodies and via `_G.X = …`. Only bytecode
+  (`SETGLOBAL`) sees them all — don't go back to regex for plain globals.
+- Guard detection (`scan._guarded_pcs`) sees globals, flavor-flag fields
+  (`Postal.WOWRetail`) and version probes (`GetBuildInfo`). Plain locals are invisible.
+- luac5.1 rejects a UTF-8 BOM the client accepts; both scan and check strip it.
 - Forever's game type `camelot` is inferred from its TOCs, not documented.
-- GlobalStrings is parsed line by line in Python: upstream has shipped a malformed line.
-- Ketho annotations are retail-oriented. Classic signatures can differ; confirm in source.
-- The scanner's "guarded" means *inside a feature test of a global*. A local flag
-  (`if isClassic then`) is not recognised, so such references can show as MISSING.
+- GlobalStrings is parsed line by line: upstream has shipped a malformed line.
+- Ketho annotations are retail-oriented. That is why LuaLS `undefined-global` is off
+  and the types pass is advisory.
+- `uv run --project`, never `--directory`, in wrappers: the latter changes cwd.
+- **The packager without `manual-changelog:` ships a git-log CHANGELOG** — every addon
+  here did on 2026-11-05, Claude-Session trailers included. `package.inspect` flags it.
+
+## Not built (deliberately, 2026-11-05)
+
+- Live game loop (deploy to `northpc`, read BugGrabber errors): no WoW subscription.
+  Install is at `C:\Program Files (x86)\Battle.net Games\World of Warcraft`; use
+  `powershell -EncodedCommand` over `ssh northpc`. The README has the details.
+- A weekly refresh timer: a system unit was refused by the permission layer; `wow_status`
+  reports staleness instead.
 
 ## Secrets
 

@@ -6,16 +6,19 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-DATA_DIR = Path(os.environ.get("WOW_API_DATA", Path.home() / "data" / "wow-api")).expanduser()
+DATA_DIR = Path(os.environ.get("WOWDEV_DATA", Path.home() / "data" / "wowdev")).expanduser()
 UPSTREAM_DIR = DATA_DIR / "upstream"
 DB_PATH = DATA_DIR / "index.sqlite"
 PKG_DIR = Path(__file__).resolve().parent
 DUMP_LUA = PKG_DIR / "dump.lua"
-LUA = os.environ.get("WOW_API_LUA", "lua5.1")
+LUA = os.environ.get("WOWDEV_LUA", "lua5.1")
 
 UI_SOURCE_URL = "https://github.com/Gethe/wow-ui-source"
 BIR_URL = "https://github.com/Ketho/BlizzardInterfaceResources"
 KETHO_URL = "https://github.com/Ketho/vscode-wow-api"
+FXA_URL = "https://github.com/NumyAddon/FramexmlAnnotations"
+TOOLS_DIR = DATA_DIR / "tools"
+LUALS_VERSION = "3.19.2"
 
 
 @dataclass(frozen=True)
