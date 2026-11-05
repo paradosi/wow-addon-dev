@@ -29,6 +29,9 @@ Python + `mcp` 2.x (`MCPServer`, not v1's `FastMCP`). Runtime deps outside Pytho
   Everything is one `ssh northpc powershell -EncodedCommand` per step, files come back
   base64. Deploy only replaces an existing install by default, and backs up the user's
   own copy once (outside `AddOns`). BugGrabber only writes at logout or `/reload`.
+- **Spells are `spells.py`** (`wowdev spell`, MCP `wow_spell`): wago.tools DB2 CSVs of the
+  index's own builds. Products: `wow`, `wow_anniversary`, `wow_classic_era`, `wowf`
+  (`Flavor.wago_product`). A wago failure warns and keeps the cache; never make it fatal.
 - **The index is shared across threads** (the MCP server runs tools on anyio workers):
   `Index` keeps one SQLite connection per thread. Don't go back to a single connection.
 - **No Claude attribution** in commits here or in the addon repos (jim, 2026-11-05): no
@@ -51,6 +54,9 @@ Python + `mcp` 2.x (`MCPServer`, not v1's `FastMCP`). Runtime deps outside Pytho
 - Ketho annotations are retail-oriented. That is why LuaLS `undefined-global` is off
   and the types pass is advisory.
 - `uv run --project`, never `--directory`, in wrappers: the latter changes cwd.
+- **A spell name matches helper spells too** (a totem's attack, a trap's trigger, a
+  physical-school rank-1 duplicate). The castable rank is the one with a duration and
+  the right school. SpellMisc has per-difficulty rows; only `DifficultyID 0` is used.
 - **The packager without `manual-changelog:` ships a git-log CHANGELOG** — every addon
   here did on 2026-11-05, Claude-Session trailers included. `package.inspect` flags it.
 

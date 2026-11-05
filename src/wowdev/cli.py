@@ -15,6 +15,7 @@
     wowdev restore ADDON [--flavor F] put back the install the first deploy replaced
     wowdev errors [ADDON] [--flavor F] [--sessions N|--all] [-v]
                                      Lua errors BugGrabber saved on the game PC
+    wowdev spell ID|NAME [--flavor F] spell id, rank, duration and school per client
     wowdev mcp                       run the MCP server on stdio
 
 ADDON is a path or a directory name under ~/projects/wowaddons. `bump` and
@@ -158,6 +159,10 @@ def main(argv: list[str] | None = None) -> int:
     er.add_argument("--all", action="store_true", help="every session in the file")
     er.add_argument("-v", "--verbose", action="store_true", help="full stacks and locals")
     er.add_argument("--json", action="store_true")
+    sp = sub.add_parser("spell")
+    sp.add_argument("query", help="spell id or name")
+    sp.add_argument("--flavor", action="append")
+    sp.add_argument("--json", action="store_true")
     sub.add_parser("mcp")
     args = ap.parse_args(argv)
 
@@ -185,6 +190,22 @@ def main(argv: list[str] | None = None) -> int:
                 f"  {k:20} {f['label']:16} {f['version']:8} build {f['build']:6} "
                 f"interface {f['interface']}"
             )
+        return 0
+    if args.cmd == "spell":
+        from .server import wow_spell
+
+        res = wow_spell(args.query, args.flavor)
+        if args.json:
+            print(json.dumps(res, indent=1))
+            return 0
+        for fl, rows in res["spells"].items():
+            print(f"{fl}  ({res['builds'].get(fl) or 'no spell data'})")
+            if rows == "absent":
+                print("    absent")
+                continue
+            for s in rows:
+                extra = "  ".join(x for x in (s.get("duration"), s.get("school")) if x)
+                print(f"  {s['id']:>7}  {s['name']}  {s['rank'] or ''}  {extra}".rstrip())
         return 0
     if args.cmd == "api":
         from .server import wow_compat, wow_lookup

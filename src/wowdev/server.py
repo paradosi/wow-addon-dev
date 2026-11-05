@@ -478,6 +478,91 @@ def wow_strings(query: str, flavor: str = "live", limit: int = 25) -> dict:
     return {"flavor": f, "results": {r["key"]: r["value"] for r in rows}}
 
 
+_SCHOOLS = (
+    (1, "physical"),
+    (2, "holy"),
+    (4, "fire"),
+    (8, "nature"),
+    (16, "frost"),
+    (32, "shadow"),
+    (64, "arcane"),
+)
+
+
+def _dur(ms: int | None) -> str | None:
+    if ms is None:
+        return None
+    if ms < 0:
+        return "until cancelled"
+    if ms == 0:
+        return "instant"
+    s = ms / 1000
+    return f"{s:g} s" if s < 120 else f"{s / 60:g} min"
+
+
+def _spell_view(r, describe: bool) -> dict:
+    d = {"id": r["id"], "name": r["name"], "rank": r["rank"]}
+    if r["duration_ms"] is not None:
+        d["duration"] = _dur(r["duration_ms"])
+        if r["max_duration_ms"] not in (None, r["duration_ms"]):
+            d["max_duration"] = _dur(r["max_duration_ms"])
+    if r["school"]:
+        d["school"] = "+".join(n for b, n in _SCHOOLS if r["school"] & b) or str(r["school"])
+    if describe and r["description"]:
+        d["description"] = r["description"][:300]
+    return d
+
+
+@mcp.tool(annotations=READ_ONLY)
+def wow_spell(query: str, flavors: list[str] | None = None, limit: int = 40) -> dict:
+    """Spell records per client from the DB2 tables of the same build as the
+    API index (wago.tools): id, name, rank, duration, school, description.
+
+    `query` is a spell id ("3599") or a name. A name matches exactly first
+    (case-insensitive), then as a substring. Use it to check an addon's spell
+    tables: does this id exist in TBC, which rank is it, how long does the
+    totem/trap/aura last on this client. Durations are the client's own data,
+    not the tooltip, so talents and set bonuses are not applied. A name
+    also returns non-castable helper spells that share it (a totem's own
+    attack, a trap's trigger): the castable rank is usually the one with a
+    duration and the expected school."""
+    fl = flavor_keys(flavors)
+    ph = ",".join("?" * len(fl))
+    cols = "flavor, id, name, rank, duration_ms, max_duration_ms, school, description"
+    q = query.strip()
+    if q.isdigit():
+        rows = idx.q(f"SELECT {cols} FROM spell WHERE id=? AND flavor IN ({ph})", int(q), *fl)
+        match = "id"
+    else:
+        rows = idx.q(
+            f"SELECT {cols} FROM spell WHERE name=? COLLATE NOCASE AND flavor IN ({ph})"
+            " ORDER BY id",
+            q,
+            *fl,
+        )
+        match = "exact"
+        if not rows:
+            rows = idx.q(
+                f"SELECT {cols} FROM spell WHERE name LIKE ? AND flavor IN ({ph})"
+                " ORDER BY length(name), id LIMIT ?",
+                f"%{q}%",
+                *fl,
+                limit * len(fl),
+            )
+            match = "substring"
+    out: dict[str, list] = {f: [] for f in fl}
+    for r in rows:
+        if len(out[r["flavor"]]) < limit:
+            out[r["flavor"]].append(_spell_view(r, describe=match == "id" or len(rows) <= 12))
+    meta = idx.meta()
+    return {
+        "query": q,
+        "match": match,
+        "builds": {f: meta.get(f"spells_build_{f}") for f in fl},
+        "spells": {f: v or "absent" for f, v in out.items()},
+    }
+
+
 @mcp.tool(annotations=READ_ONLY)
 def wow_check_addon(path: str, flavors: list[str] | None = None, include_libs: bool = False) -> str:
     """Scan an addon directory for API references that don't exist (or exist

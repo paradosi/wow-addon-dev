@@ -54,6 +54,12 @@ CREATE TABLE def(
     flavor TEXT, name TEXT, path TEXT, line INTEGER, deprecated INTEGER, lod INTEGER);
 CREATE INDEX def_name ON def(name);
 CREATE TABLE gstring(flavor TEXT, key TEXT, value TEXT, PRIMARY KEY(flavor, key));
+-- wago.tools DB2 exports of the same build (spells.py); durations in ms, -1 = until cancelled
+CREATE TABLE spell(
+    flavor TEXT, id INTEGER, name TEXT, rank TEXT, duration_ms INTEGER,
+    max_duration_ms INTEGER, school INTEGER, icon INTEGER, description TEXT,
+    PRIMARY KEY(flavor, id));
+CREATE INDEX spell_name ON spell(name COLLATE NOCASE);
 CREATE VIRTUAL TABLE fts USING fts5(name, kind, system, words, text, tokenize='unicode61');
 """
 
@@ -90,6 +96,14 @@ def fetch() -> None:
         _sync(BIR_URL, f.key, f.bir_dir)
         _sync(FXA_URL, f.key, UPSTREAM_DIR / f"fxa-{f.key}")  # FrameXML types for LuaLS
     _sync(KETHO_URL, "master", UPSTREAM_DIR / "ketho-annotations")
+    from . import spells
+
+    try:
+        builds = spells._builds()
+        for f in FLAVORS.values():
+            spells.fetch(f, *_version(f), builds=builds)
+    except Exception as e:  # spell data is an extra: never fail the refresh on it
+        print(f"  spells: wago.tools unavailable ({e}); keeping what is cached", file=sys.stderr)
 
 
 # --------------------------------------------------------------------------- parse
@@ -650,9 +664,15 @@ def build() -> Path:
         db.executemany("INSERT INTO def VALUES(?,?,?,?,?,?)", defs)
         gs = _gstrings(f)
         db.executemany("INSERT INTO gstring VALUES(?,?,?)", [(f.key, k, v) for k, v in gs.items()])
+        from . import spells
+
+        sp_build, sp = spells.collect(f)
+        db.executemany("INSERT INTO spell VALUES(?,?,?,?,?,?,?,?,?)", sp)
+        if sp_build:
+            db.execute("INSERT INTO meta VALUES(?, ?)", (f"spells_build_{f.key}", sp_build))
         print(
             f"  {f.key}: {version} ({build_no}) — {n} api rows, {len(defs)} defs, "
-            f"{len(gs)} strings",
+            f"{len(gs)} strings, {len(sp)} spells",
             file=sys.stderr,
         )
 

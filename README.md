@@ -55,6 +55,10 @@ That tooling is what this project provides.
   and the changelog heading. `interface` raises TOC interface numbers to the
   current clients. `package` builds the real release zip locally with
   BigWigsMods/packager and inspects it.
+- **Spell records per client**: id, name, rank, duration, school and
+  description from the DB2 tables of the same build (via wago.tools), so an
+  addon's spell tables can be checked: does this id exist on TBC, which rank is
+  it, how long does the totem last.
 - **Blizzard's UI source per client**, searchable and readable, so you can see
   how Blizzard calls an API or how a deprecated function was reimplemented.
 
@@ -120,6 +124,7 @@ wowdev deploy ADDON [--flavor F] build and install into the game PC's clients
 wowdev restore ADDON [--flavor F] put back the install the first deploy replaced
 wowdev errors [ADDON] [--flavor F] [--sessions N|--all] [-v] [--json]
                                  Lua errors BugGrabber saved on the game PC
+wowdev spell ID|NAME [--flavor F] spell id, rank, duration and school per client
 wowdev mcp                       run the MCP server on stdio
 ```
 
@@ -194,7 +199,7 @@ git -C iChat commit -am "v1.4.11: …" && git -C iChat tag v1.4.11 && git -C iCh
 
 ## MCP server
 
-Fourteen tools, all read-only (annotated `readOnlyHint`):
+Fifteen tools, all read-only (annotated `readOnlyHint`):
 
 | Tool | Answers |
 |---|---|
@@ -207,6 +212,7 @@ Fourteen tools, all read-only (annotated `readOnlyHint`):
 | `wow_diff` | names in one client but not another (porting) |
 | `wow_source_search` / `wow_source_read` | ripgrep over, and reading of, Blizzard's UI source for one client |
 | `wow_strings` | enUS GlobalStrings by key or text |
+| `wow_spell` | a spell by id or name, per client: rank, duration, school, description. A name returns every rank's id |
 | `wow_check_addon` | the cross-flavor scan of an addon directory |
 | `wow_check_gate` | the whole `./check` gate for one addon |
 | `wow_addons` | the addons under `~/projects/wowaddons`: package-as name, version, targeted clients |
@@ -247,15 +253,16 @@ name, so adding a client (say `classic` for Mists) is one entry plus `wowdev ref
 src/wowdev/
   config.py    flavors (branch names, aliases, TOC suffixes, game types), paths
   dump.lua     evaluates Blizzard/Ketho Lua data tables in a sandbox -> JSON
-  build.py     fetch upstream; build index.sqlite (api, def, annotation, gstring, fts)
+  build.py     fetch upstream; build index.sqlite (api, def, annotation, gstring, spell, fts)
   index.py     read side: status classification, bulk sets for the scanner
   scan.py      TOC -> loaded files -> luac bytecode -> per-client findings
   toc.py       TOC lint, version bump, interface update (dry-run diffs)
   luals.py     headless lua-language-server with per-flavor FrameXML types
   package.py   BigWigsMods/packager dry run + zip inspection
   check.py     the gate: syntax, luacheck, toc, api (+ types, package)
+  spells.py    wago.tools DB2 exports (SpellName, Spell, SpellMisc, SpellDuration) per build
   game.py      live loop over ssh + PowerShell: deploy / restore / BugGrabber errors
-  server.py    MCP server (mcp 2.x MCPServer), 14 read-only tools
+  server.py    MCP server (mcp 2.x MCPServer), 15 read-only tools
   cli.py       `wowdev` subcommands; `setup` installs pinned tools
 tests/test_core.py
 ```
@@ -270,6 +277,14 @@ tests/test_core.py
 | [Ketho/BlizzardInterfaceResources](https://github.com/Ketho/BlizzardInterfaceResources) | dumps from the running client: every global function, event, enum value, widget method, CVar, frame, template, GlobalString |
 | [NumyAddon/FramexmlAnnotations](https://github.com/NumyAddon/FramexmlAnnotations) | LuaLS annotations of FrameXML (types pass) |
 | [Ketho/vscode-wow-api](https://github.com/Ketho/vscode-wow-api) | wiki-derived signatures and doc links (single branch, retail-oriented) |
+| [wago.tools](https://wago.tools) | CSV exports of each build's DB2 tables; four spell tables per client (`spells.py`) |
+
+Spell tables are fetched for the exact `version.build` the UI source describes, or
+the newest build wago.tools has for that product if the exact one is not up yet.
+They are cached under `upstream/spells-<flavor>/<build>/` and re-downloaded only
+when the build changes. A wago.tools outage only warns: the refresh keeps the
+cached tables. Retail is most of the size: 416k spells, about 67 MB of the
+136 MB index.
 
 **Building the index.** Every data file is a Lua table, so `dump.lua` evaluates
 it with the real `lua5.1` in a sandbox (unknown globals resolve to a placeholder)
@@ -329,6 +344,10 @@ changelog drift.
   port was a rename. `omada-mcp` is still on v1.
 - **No WoW API emulator.** Executing addon code headlessly (as wowless does)
   would test more, but needs a far larger stub of the client. It is not built.
+- **Spell data from wago.tools, not a scraped site or a client extraction.** It
+  serves every client's DB2 tables by exact build, so a spell row and the API
+  index describe the same patch. Wowhead was rejected as a scraping target, and
+  extracting CASC locally needs a client on this box.
 - **Rejected: deriving availability from Ketho's annotations alone.** They are a
   single retail-oriented branch. The per-client dumps are authoritative for presence.
 

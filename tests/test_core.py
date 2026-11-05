@@ -243,3 +243,57 @@ def test_game_errors_filters_by_addon_and_session(monkeypatch):
     assert [e["count"] for e in r["errors"]] == [2]
     assert r["errors"][0]["time"].startswith("2026/")
     assert len(game.errors("FloTotemBar", "classic_anniversary", sessions=None)["errors"]) == 2
+
+
+def test_spells_collect_joins_tables(tmp_path: Path, monkeypatch):
+    from wowdev import spells
+    from wowdev.config import FLAVORS
+
+    d = tmp_path / "spells-classic_anniversary" / "2.5.6.1"
+    d.mkdir(parents=True)
+    (d / "SpellName.csv").write_text("ID,Name_lang\n3599,Searing Totem\n13165,Aspect of the Hawk\n")
+    (d / "Spell.csv").write_text(
+        'ID,NameSubtext_lang,Description_lang\n3599,Rank 1,"Lasts $d, ""hot"""\n'
+    )
+    (d / "SpellMisc.csv").write_text(
+        "ID,SpellID,DifficultyID,DurationIndex,SchoolMask,SpellIconFileDataID\n"
+        "1,3599,0,9,4,135825\n2,3599,1,21,1,0\n3,13165,0,21,8,136076\n"
+    )
+    (d / "SpellDuration.csv").write_text("ID,Duration,MaxDuration\n9,30000,30000\n21,-1,-1\n")
+    monkeypatch.setattr(spells, "UPSTREAM_DIR", tmp_path)
+    build, rows = spells.collect(FLAVORS["classic_anniversary"])
+    assert build == "2.5.6.1"
+    by_id = {r[1]: r for r in rows}
+    # difficulty-0 SpellMisc row wins; quoted CSV survives
+    assert by_id[3599] == (
+        "classic_anniversary",
+        3599,
+        "Searing Totem",
+        "Rank 1",
+        30000,
+        30000,
+        4,
+        135825,
+        'Lasts $d, "hot"',
+    )
+    assert by_id[13165][2:6] == ("Aspect of the Hawk", None, -1, -1)
+
+
+@needs_index
+def test_spell_lookup_by_id_and_name():
+    from wowdev.server import wow_spell
+
+    r = wow_spell("3599", ["tbc", "era"])
+    assert r["match"] == "id"
+    for f in ("classic_anniversary", "classic_era"):
+        (s,) = r["spells"][f]
+        assert (s["name"], s["rank"], s["duration"], s["school"]) == (
+            "Searing Totem",
+            "Rank 1",
+            "30 s",
+            "fire",
+        )
+    r = wow_spell("aspect of the hawk", ["tbc"])
+    assert r["match"] == "exact"
+    assert all(s["duration"] == "until cancelled" for s in r["spells"]["classic_anniversary"])
+    assert wow_spell("13165", ["live"])["spells"]["live"] == "absent"

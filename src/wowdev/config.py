@@ -35,6 +35,8 @@ class Flavor:
     # `[Family]\\CombatLogConstants.lua`. Every candidate that exists on disk is loaded.
     # Checked against each client's real global list (BIR FrameXML.lua) 2026-11-05.
     toc_tokens: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    # wago.tools product name, for the spell tables (spells.py)
+    wago_product: str | None = None
 
     @property
     def ui_dir(self) -> Path:
@@ -58,6 +60,7 @@ FLAVORS: dict[str, Flavor] = {
             ("Mainline",),
             frozenset({"mainline", "standard"}),
             (("Game", ("Mainline",)), ("Family", ("Mainline",))),
+            "wow",
         ),
         Flavor(
             "classic_anniversary",
@@ -66,6 +69,7 @@ FLAVORS: dict[str, Flavor] = {
             ("TBC", "BCC", "Classic"),
             frozenset({"tbc", "classic", "standard"}),
             (("Game", ("TBC",)), ("Family", ("Classic",))),
+            "wow_anniversary",
         ),
         Flavor(
             "classic_era",
@@ -74,6 +78,7 @@ FLAVORS: dict[str, Flavor] = {
             ("Vanilla", "Classic"),
             frozenset({"vanilla", "classic", "standard"}),
             (("Game", ("Vanilla",)), ("Family", ("Classic",))),
+            "wow_classic_era",
         ),
         # Internally "Camelot" (WOW_PROJECT_CAMELOT = 18). It ships Camelot/
         # override folders gated on [AllowLoadGameType camelot]. Treating it as
@@ -87,6 +92,7 @@ FLAVORS: dict[str, Flavor] = {
             # approximate: neither folder alone matches the client's global list
             # (Camelot 88%, Mainline 75%), so both are taken where they exist
             (("Game", ("Camelot", "Mainline")), ("Family", ("Camelot", "Mainline"))),
+            "wowf",
         ),
     )
 }
