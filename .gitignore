@@ -1,0 +1,26 @@
+# Secrets and local config
+.env
+.env.local
+*.pem
+*.key
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Logs and scratch
+*.log
+tmp/
+scratch/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
