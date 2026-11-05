@@ -73,6 +73,7 @@ def _detail_view(kind: str, name: str, d: dict) -> dict:
     for k in (
         "doc",
         "flags",
+        "restrictions",
         "payload",
         "synchronous",
         "values",
@@ -92,6 +93,13 @@ def _detail_view(kind: str, name: str, d: dict) -> dict:
             v[k] = d[k]
     if kind == "event":
         v["payload"] = _fmt_params(d.get("payload") or []) or "(none)"
+    secret_info = {
+        p["name"]: ("never secret" if p.get("never_secret") else p["secret"])
+        for p in (d.get("payload") or []) + (d.get("args") or []) + (d.get("returns") or [])
+        if p.get("never_secret") or p.get("secret")
+    }
+    if secret_info:
+        v["secret_fields"] = secret_info
     if "fields" in v:
         v["fields"] = _fmt_params(v["fields"])
     return v

@@ -297,3 +297,26 @@ def test_spell_lookup_by_id_and_name():
     assert r["match"] == "exact"
     assert all(s["duration"] == "until cancelled" for s in r["spells"]["classic_anniversary"])
     assert wow_spell("13165", ["live"])["spells"]["live"] == "absent"
+
+
+@needs_index
+def test_restricted_apis_reported_only_where_secrets_exist(tmp_path: Path):
+    from wowdev.index import Index
+    from wowdev.scan import scan
+
+    idx = Index()
+    assert "SecretInChatMessagingLockdown" in idx.restricted("live")["CHAT_MSG_WHISPER"]
+    # Classic marks CLEU HasRestrictions, yet addons use it freely there
+    assert idx.restricted("classic_anniversary") == {}
+    a = tmp_path / "Probe"
+    a.mkdir()
+    (a / "Probe.toc").write_text("## Interface: 120105, 20506\n## Title: Probe\ncore.lua\n")
+    (a / "core.lua").write_text(
+        'local f = CreateFrame("Frame")\nf:RegisterEvent("CHAT_MSG_WHISPER")\n'
+        'f:RegisterEvent("PLAYER_LOGIN")\nlocal n = UnitName("target")\n'
+    )
+    r = scan(a)
+    live = r["flavors"]["live"]["restricted"]
+    assert set(live) == {"CHAT_MSG_WHISPER", "UnitName"}
+    assert live["CHAT_MSG_WHISPER"]["at"] == "core.lua:2"
+    assert r["flavors"]["classic_anniversary"]["restricted"] == {}

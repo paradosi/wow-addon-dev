@@ -60,6 +60,10 @@ CREATE TABLE spell(
     max_duration_ms INTEGER, school INTEGER, icon INTEGER, description TEXT,
     PRIMARY KEY(flavor, id));
 CREATE INDEX spell_name ON spell(name COLLATE NOCASE);
+-- Blizzard's secret-value / restricted-API markers that change what addon code
+-- may do (Retail 12.x and Forever). Full markers stay in api.detail.restrictions.
+CREATE TABLE restriction(
+    flavor TEXT, kind TEXT, name TEXT, markers TEXT, PRIMARY KEY(flavor, kind, name));
 CREATE VIRTUAL TABLE fts USING fts5(name, kind, system, words, text, tokenize='unicode61');
 """
 
@@ -136,6 +140,29 @@ def words(name: str) -> str:
     return " ".join(w.lower() for w in _CAMEL.findall(name))
 
 
+# Secret-value / restriction markers in Blizzard_APIDocumentationGenerated.
+_RESTRICT_KEY = re.compile(r"^(Secret|ConditionalSecret|HasRestrictions$|RequiresUnitAuraAccess$)")
+# markers that only say "don't pass secret values in": on ~3,600 retail
+# functions, so not worth surfacing in a scan
+QUIET_MARKERS = {"SecretArguments", "SecretArgumentsAddAspect"}
+_ASPECTS: dict[int, str] = {}  # Enum.SecretAspect bit -> name, set per flavor
+
+
+def _restrictions(obj: dict) -> dict:
+    out = {}
+    for k, v in obj.items():
+        if not _RESTRICT_KEY.match(k) or v in (False, None):
+            continue
+        if isinstance(v, list):  # SecretReturnsForAspect = { Enum.SecretAspect.Text }
+            v = [_ASPECTS.get(x, x) if isinstance(x, int) else x for x in v]
+        out[k] = v
+    return out
+
+
+def notable_markers(r: dict) -> list[str]:
+    return sorted(k for k in r if k not in QUIET_MARKERS)
+
+
 def _params(items: list | None) -> list[dict]:
     out = []
     for a in items or []:
@@ -152,6 +179,10 @@ def _params(items: list | None) -> list[dict]:
             p["doc"] = " ".join(a["Documentation"])
         if a.get("StrideIndex"):
             p["stride"] = a["StrideIndex"]
+        if a.get("NeverSecret"):
+            p["never_secret"] = True
+        if r := _restrictions(a):
+            p["secret"] = r
         out.append(p)
     return out
 
@@ -163,9 +194,13 @@ def _func_detail(fn: dict, table: dict) -> dict:
     d: dict = {"args": _params(fn.get("Arguments")), "returns": _params(fn.get("Returns"))}
     if fn.get("Documentation"):
         d["doc"] = " ".join(fn["Documentation"])
-    flags = sorted(k for k, v in fn.items() if k not in _FUNC_SKIP and v is True)
+    flags = sorted(
+        k for k, v in fn.items() if k not in _FUNC_SKIP and v is True and not _RESTRICT_KEY.match(k)
+    )
     if flags:
         d["flags"] = flags
+    if r := _restrictions(fn):
+        d["restrictions"] = r
     d["source"] = f"Blizzard_APIDocumentationGenerated/{table.get('_file')}"
     return d
 
@@ -195,7 +230,13 @@ def collect_flavor(f: Flavor) -> dict:
 
     # --- Blizzard's structured docs (typed, but only the C_* / documented subset)
     widget_sigs: dict[tuple[str, str], dict] = {}
-    for t in _apidoc(f):
+    docs = _apidoc(f)
+    _ASPECTS.clear()
+    for t in docs:
+        for tb in t.get("Tables") or []:
+            if tb.get("Name") == "SecretAspect" and tb.get("Type") == "Enumeration":
+                _ASPECTS.update({x["EnumValue"]: x["Name"] for x in tb.get("Fields") or []})
+    for t in docs:
         system = t.get("Name")
         ns = t.get("Namespace")
         is_so = t.get("Type") == "ScriptObject"
@@ -213,6 +254,8 @@ def collect_flavor(f: Flavor) -> dict:
                 d["synchronous"] = True
             if ev.get("UniqueEvent"):
                 d["unique"] = True
+            if r := _restrictions(ev):
+                d["restrictions"] = r
             d["source"] = f"Blizzard_APIDocumentationGenerated/{t.get('_file')}"
             put("event", ev.get("LiteralName") or ev["Name"], system, d)
         for tb in t.get("Tables") or []:
@@ -648,6 +691,11 @@ def build() -> Path:
         for kind, items in rows.items():
             batch = []
             for name, (system, detail) in items.items():
+                if detail and (m := notable_markers(detail.get("restrictions") or {})):
+                    db.execute(
+                        "INSERT OR REPLACE INTO restriction VALUES(?,?,?,?)",
+                        (f.key, kind, name, ",".join(m)),
+                    )
                 batch.append((kind, name, f.key, system, json.dumps(detail) if detail else None))
                 key = (kind, name)
                 e = fts_rows.setdefault(key, {"system": system, "text": set()})

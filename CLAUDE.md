@@ -54,6 +54,10 @@ Python + `mcp` 2.x (`MCPServer`, not v1's `FastMCP`). Runtime deps outside Pytho
 - Ketho annotations are retail-oriented. That is why LuaLS `undefined-global` is off
   and the types pass is advisory.
 - `uv run --project`, never `--directory`, in wrappers: the latter changes cwd.
+- **`HasRestrictions` means different things per client.** On Retail/Forever it travels
+  with the secret-value system (CLEU no longer reaches addons). On TBC/Era it marks 182
+  APIs that addons use freely. `Index.restricted()` returns `{}` for a client with no
+  `Secret*` markers, so the scan never warns on Classic. Keep it that way.
 - **A spell name matches helper spells too** (a totem's attack, a trap's trigger, a
   physical-school rank-1 duplicate). The castable rank is the one with a duration and
   the right school. SpellMisc has per-difficulty rows; only `DifficultyID 0` is used.

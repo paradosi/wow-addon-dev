@@ -190,6 +190,25 @@ class Index:
 
     # ------------------------------------------------------------- details
 
+    def restricted(self, flavor: str) -> dict[str, str]:
+        """{name: markers} for functions and events whose restrictions change what
+        addon code may do, on clients with Blizzard's secret-value system
+        (Retail 12.x, Forever). Empty for Classic, where HasRestrictions is on
+        APIs addons use freely (COMBAT_LOG_EVENT_UNFILTERED)."""
+        cache = self.__dict__.setdefault("_restricted", {})
+        if flavor not in cache:
+            try:
+                rows = self.q(
+                    "SELECT name, markers FROM restriction WHERE flavor=? "
+                    "AND kind IN ('function','event')",
+                    flavor,
+                )
+            except sqlite3.OperationalError:  # index built before restrictions
+                rows = []
+            m = {r["name"]: r["markers"] for r in rows}
+            cache[flavor] = m if any("Secret" in v for v in m.values()) else {}
+        return cache[flavor]
+
     def annotation(self, name: str) -> dict | None:
         r = self.q("SELECT * FROM annotation WHERE name = ?", name)
         if not r:

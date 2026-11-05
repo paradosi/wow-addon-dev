@@ -34,6 +34,7 @@ _LIB_DIR = re.compile(r"(^|/)(libs?|libraries)(/|$)", re.I)
 # globals every addon may read that no data file lists. LibStub is created by
 # `_G[LIBSTUB_MAJOR] = ...`, a computed key no static pass can see.
 _ALWAYS = {"_G", "self", "...", "arg", "LibStub"}
+_EVENTISH = re.compile(r'^"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+"$')
 
 
 @dataclass
@@ -43,6 +44,7 @@ class Ref:
     line: int
     guarded: bool
     method: bool = False
+    literal: bool = False  # a string constant: event names reach the API this way
 
 
 @dataclass
@@ -306,6 +308,8 @@ def analyse(path: Path, rel: str, namespaces: set[str]) -> tuple[list[Ref], set[
                 refs.append(Ref(name, rel, ins.line, g or name in tested))
             elif ins.op == "SETGLOBAL":
                 defines.add(ins.comment)
+            elif ins.op == "LOADK" and _EVENTISH.match(ins.comment):
+                refs.append(Ref(ins.comment.strip('"'), rel, ins.line, g, literal=True))
             elif ins.op == "SETTABLE" and ins.comment.startswith('"'):
                 key = ins.comment.split('"')[1]
                 keys.add(key)
@@ -383,6 +387,8 @@ def scan(addon_dir: Path, flavors: list[str] | None = None, include_libs: bool =
                     # modern API is missing, so a note rather than a warning
                     "guarded_deprecated": defaultdict(int),
                     "unknown": defaultdict(list),
+                    # secret values / restricted APIs (Retail 12.x, Forever)
+                    "restricted": {},
                 },
             )
             fr["toc"].append(
@@ -398,6 +404,7 @@ def scan(addon_dir: Path, flavors: list[str] | None = None, include_libs: bool =
                 *(idx.sets(o)["methods"] for o in idx.flavors if o != flavor)
             )
             seen: set[tuple] = set()
+            restricted = idx.restricted(flavor)
             for p in toc.files:
                 rel = str(p.relative_to(addon_dir))
                 if _LIB_DIR.search(rel) and not include_libs:
@@ -408,6 +415,10 @@ def scan(addon_dir: Path, flavors: list[str] | None = None, include_libs: bool =
                         continue
                     seen.add(key)
                     loc = f"{r.file}:{r.line}"
+                    if r.name in restricted and r.name not in fr["restricted"]:
+                        fr["restricted"][r.name] = {"markers": restricted[r.name], "at": loc}
+                    if r.literal:
+                        continue
                     if r.method:
                         if (
                             r.name not in s["methods"]
@@ -504,6 +515,11 @@ def format_report(report: dict) -> str:
             out.append(
                 "  ok guarded fallback to a deprecated shim (used only if the new API is missing): "
                 + ", ".join(sorted(fr["guarded_deprecated"]))
+            )
+        for n, m in sorted(fr["restricted"].items()):
+            out.append(
+                f"s RESTRICTED {n} at {m['at']} — {m['markers'].replace(',', ', ')} "
+                "(secret values / restricted for addon code; see wow_lookup)"
             )
         if fr["unknown"]:
             out.append(

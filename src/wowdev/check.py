@@ -143,6 +143,8 @@ def _api(addon: Path) -> Section:
             s.notes.append(
                 f"[{flavor}] guarded fallback to deprecated: {', '.join(sorted(fr['guarded_deprecated']))}"
             )
+        for n, m in sorted(fr.get("restricted", {}).items()):
+            s.warnings.append(f"[{flavor}] {m['at']} {n} is restricted: {m['markers']}")
         if fr["unknown"]:
             s.notes.append(f"[{flavor}] unknown everywhere: {', '.join(fr['unknown'])}")
     return s

@@ -43,6 +43,12 @@ That tooling is what this project provides.
 - **A five-way availability status per client**: `native`, `blizzard_ui`,
   `load_on_demand`, `deprecated_shim` and `absent`. "Exists only because
   `Blizzard_Deprecated` still ships a fallback" is a separate state from "exists".
+- **Secret values and restricted APIs (Retail 12.x, Forever).** Blizzard's
+  `SecretArguments`, `SecretReturns`, `SecretWhen…Restricted`,
+  `SecretInChatMessagingLockdown`, `RequiresUnitAuraAccess`, `HasRestrictions`
+  and per-field `NeverSecret` are kept on every function, event and parameter.
+  `wow_lookup` shows them, and the scan warns where an addon registers a
+  restricted event (string constants count) or calls a restricted function.
 - **A cross-flavor addon scan.** It reads each TOC's `## Interface:`, follows the
   TOC to the files that client loads, and checks every global the bytecode reads
   against that client. Feature tests such as `if C_X then`,
@@ -325,6 +331,16 @@ files, mismatched versions, texture paths that don't match `package-as`), and
 unguarded references to globals absent in a targeted client. Warnings are
 reported but don't fail it: deprecated shims, outdated interface numbers and
 changelog drift.
+
+**Restrictions.** `api.detail.restrictions` holds every marker as Blizzard
+wrote it, with `Enum.SecretAspect` bits mapped back to names. The `restriction`
+table holds the notable ones per client; `SecretArguments` and
+`SecretArgumentsAddAspect` are left out, because about 3,600 Retail functions
+carry them and they only say "don't pass secret values in". The scan reports
+restrictions only on clients that have secret markers at all. TBC and Era mark
+182 functions `HasRestrictions`, `COMBAT_LOG_EVENT_UNFILTERED` among them, and
+addons use those freely there, so on Classic that marker is shown but never
+warned on.
 
 ## Design decisions
 
