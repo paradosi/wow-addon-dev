@@ -326,6 +326,11 @@ family bucket of `interface // 100` (or `// 10000` for 12.x) means 11508 and
 11509 both count as Classic Era. The TOC's files are compiled to bytecode, and
 every `GETGLOBAL` (plus one `GETTABLE` level for `C_X.F` and `Enum.X`) becomes a
 reference with a line number.
+A function named by a string literal is a reference too, when it is the
+first argument of `hooksecurefunc("Name", …)` or Ace's `:SecureHook("Name", …)` /
+`:RawHook("Name", …)`. Hooking a function the client no longer has errors at load,
+which is how xCT+ broke on TBC 2.5.6. The object form, `hooksecurefunc(frame, "Method", …)`,
+is left alone.
 
 A reference is *guarded* when it sits inside the jump region of a feature test,
 which is a `TEST`/`EQ`/`LT`/`LE` followed by `JMP` whose operand, on the same
@@ -395,7 +400,9 @@ warned on.
   `stale` after 8 days. `just install-timer` sets up the weekly refresh; `systemctl status wowdev-refresh` shows the last run.
 - **A reference is reported MISSING but it is guarded**: the scanner sees guards
   on globals, on flavor-flag fields and on version probes, but not on plain locals
-  (`local isClassic = …; if isClassic then`). Use a field or test the global directly.
+  (`local isClassic = …; if isClassic then`). Function calls
+  (`if IsClassicClient() then`) are not guards either. Use a field, or test the global
+  directly: `if IsClassicClient() and SomeFunc then`.
 - **`unknown in every client`**: other addons' globals (Titan Panel, ElvUI),
   frame names built at runtime (`StaticPopup1EditBox`), or APIs removed from every
   client. The last group is real.

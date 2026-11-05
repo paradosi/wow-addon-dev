@@ -41,6 +41,23 @@ _WRITES_A = {
     "CONCAT", "CALL", "TESTSET", "CLOSURE", "VARARG", "FORPREP", "FORLOOP",
 }  # fmt: skip
 _EVENTISH = re.compile(r'^"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+"$')
+# functions that take the name of a global function to hook as a string; a
+# vanished name errors at load (xCT+'s CombatText_AddMessage on TBC 2.5.6)
+_HOOKERS = {"hooksecurefunc"}
+_ACE_HOOKERS = {"SecureHook", "RawHook"}
+
+
+def _hooked_name(fn: list, k: int, reg: int) -> tuple[str, int] | None:
+    """The string constant loaded into `reg` before the call at or after fn[k],
+    i.e. the first argument when it is a literal name."""
+    for ins in fn[k + 1 :]:
+        if ins.op in ("CALL", "TAILCALL", "RETURN", "JMP"):
+            return None
+        if ins.op in _WRITES_A and ins.args and ins.args[0] == reg:
+            if ins.op == "LOADK" and ins.comment.startswith('"'):
+                return ins.comment.strip('"'), ins.line
+            return None
+    return None
 
 
 @dataclass
@@ -312,6 +329,8 @@ def analyse(path: Path, rel: str, namespaces: set[str]) -> tuple[list[Ref], set[
                         Ref(composed, rel, ins.line, g or composed in tested or name in tested)
                     )
                 refs.append(Ref(name, rel, ins.line, g or name in tested))
+                if name in _HOOKERS and (hk := _hooked_name(fn, k, ins.args[0] + 1)):
+                    refs.append(Ref(hk[0], rel, hk[1], g or hk[0] in tested))
             elif ins.op == "SETGLOBAL":
                 defines.add(ins.comment)
             elif ins.op == "LOADK" and _EVENTISH.match(ins.comment):
@@ -324,6 +343,8 @@ def analyse(path: Path, rel: str, namespaces: set[str]) -> tuple[list[Ref], set[
             elif ins.op == "SELF" and ins.comment.startswith('"'):
                 meth = ins.comment.split('"')[1]
                 refs.append(Ref(meth, rel, ins.line, g or ("method:" + meth) in tested, True))
+                if meth in _ACE_HOOKERS and (hk := _hooked_name(fn, k, ins.args[0] + 2)):
+                    refs.append(Ref(hk[0], rel, hk[1], g or hk[0] in tested))
             elif (
                 ins.op == "GETTABLE"
                 and ins.comment.startswith('"')

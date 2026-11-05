@@ -415,6 +415,23 @@ def test_reused_g_register_is_not_a_global_definition(tmp_path: Path):
     assert "settings" not in defines and "settings" in keys
 
 
+def test_hooked_function_names_are_references(tmp_path: Path):
+    f = tmp_path / "t.lua"
+    f.write_text(
+        'hooksecurefunc("Gone_AddMessage", function() end)\n'
+        'hooksecurefunc(SomeFrame, "Method", function() end)\n'
+        'addon:SecureHook("AceHooked", function() end)\n'
+        'addon:SecureHook(SomeFrame, "AceMethod")\n'
+        'if Maybe_There then hooksecurefunc("Maybe_There", print) end\n'
+    )
+    refs, _, _ = analyse(f, "t.lua", set())
+    names = {r.name: r for r in refs}
+    assert "Gone_AddMessage" in names and not names["Gone_AddMessage"].guarded
+    assert "AceHooked" in names
+    assert "Method" not in names and "AceMethod" not in names
+    assert names["Maybe_There"].guarded
+
+
 def test_unused_finds_dead_weight(tmp_path: Path):
     from wowdev.unused import unused
 

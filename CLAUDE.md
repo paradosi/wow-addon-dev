@@ -47,6 +47,13 @@ Python + `mcp` 2.x (`MCPServer`, not v1's `FastMCP`). Runtime deps outside Pytho
   raises "Missing entry" through the error handler, so treat it as a bug.
 - **`analyse()` tracks registers holding `_G`**; any opcode in `_WRITES_A` clears one. Without
   that, `bar.x = …` after a reused register read as a global definition (2026-11-05).
+- **Hook names are references**: `_hooked_name()` reads the string literal loaded into the
+  first argument register of `hooksecurefunc` / `:SecureHook` / `:RawHook`. Names removed
+  from *every* client land in "unknown in every client", not in errors: the index has no
+  history, so check that list after a Classic patch.
+- **Retail's tooltip `Set*` methods are built in Lua** (`TooltipDataHandler.lua`'s accessor
+  table, `AddTooltipDataAccessor`), so the widget dump misses them; `_tooltip_accessors()`
+  adds them as `GameTooltip` methods. Without it `tooltip:SetBagItem()` failed Postal's gate.
 - **The index is shared across threads** (the MCP server runs tools on anyio workers):
   `Index` keeps one SQLite connection per thread. Don't go back to a single connection.
 - **No Claude attribution** in commits here or in the addon repos (jim, 2026-11-05): no

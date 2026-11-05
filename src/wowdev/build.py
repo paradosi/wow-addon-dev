@@ -344,6 +344,12 @@ def collect_flavor(f: Flavor) -> dict:
     for name, v in (_res(f, "Templates").get("Templates") or {}).items():
         put("template", name, "FrameXML", {"type": v.get("type") if isinstance(v, dict) else None})
 
+    # Retail builds most GameTooltip:Set* methods in Lua (TooltipDataHandler's
+    # accessor table and AddTooltipDataAccessor calls), so the client's widget
+    # dump does not list them; without this, tooltip:SetBagItem() read as absent
+    for name in _tooltip_accessors(f):
+        put("widget_method", f"GameTooltip:{name}", "GameTooltip", {"tooltip_data_accessor": True})
+
     return rows
 
 
@@ -355,6 +361,29 @@ _DEF_INDENTED = re.compile(
 _BOOTSTRAP = re.compile(r"\[Bootstrap\]", re.I)
 _TOC_COND = re.compile(r"\[((?:AllowLoad|ExcludeLoad)[A-Za-z]*)\s+([^\]]+)\]")
 _XML_REF = re.compile(r'<(Script|Include)\s+file="([^"]+)"', re.I)
+
+
+_ACCESSOR_ENTRY = re.compile(r'^\s*(Set\w+)\s*=\s*"Get\w+"\s*,', re.M)
+_ACCESSOR_CALL = re.compile(r'AddTooltipDataAccessor\(\s*\w+\s*,\s*"(\w+)"')
+
+
+def _tooltip_accessors(f: Flavor) -> set[str]:
+    """GameTooltip methods TooltipDataHandler defines at load."""
+    root = f.ui_dir / "Interface" / "AddOns"
+    out: set[str] = set()
+    if not root.exists():
+        return out
+    for path in root.rglob("*.lua"):
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if "TooltipDataAccessor" not in text:
+            continue
+        out.update(_ACCESSOR_CALL.findall(text))
+        if path.name == "TooltipDataHandler.lua":
+            out.update(_ACCESSOR_ENTRY.findall(text))
+    return out
 
 
 def _ci_path(base: Path, rel: str) -> Path | None:
