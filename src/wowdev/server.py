@@ -613,6 +613,27 @@ def wow_check_addon(path: str, flavors: list[str] | None = None, include_libs: b
 
 
 @mcp.tool(annotations=READ_ONLY)
+def wow_unused(addon: str, verbose: bool = False) -> str:
+    """Dead weight and duplication in one addon (advisory; not part of the
+    gate): .lua/.xml files shipped but never loaded, media no loaded file
+    names, globals defined but never read, luacheck's unused locals and
+    unreachable code, vendored libraries nothing uses, locale keys defined but
+    never looked up (and, for an enUS base, looked up but never defined, which
+    AceLocale reports as an error), and blocks of identical code. Every item
+    is a candidate: check it before removing, since `_G[...]` lookups and other
+    addons are invisible to a static pass. `addon` is a path or a directory
+    name under ~/projects/wowaddons."""
+    from .check import resolve_addon
+    from .unused import format_report as fmt
+    from .unused import unused
+
+    try:
+        return fmt(unused(resolve_addon(addon)), verbose)
+    except (FileNotFoundError, ValueError) as e:
+        return f"error: {e}"
+
+
+@mcp.tool(annotations=READ_ONLY)
 def wow_check_gate(addon: str, types: bool = False) -> str:
     """The full static gate for one addon — what `./check` runs in
     ~/projects/wowaddons: syntax (luac), luacheck (undefined-variable is an

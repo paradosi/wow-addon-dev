@@ -40,6 +40,13 @@ Python + `mcp` 2.x (`MCPServer`, not v1's `FastMCP`). Runtime deps outside Pytho
 - **Spells are `spells.py`** (`wowdev spell`, MCP `wow_spell`): wago.tools DB2 CSVs of the
   index's own builds. Products: `wow`, `wow_anniversary`, `wow_classic_era`, `wowf`
   (`Flavor.wago_product`). A wago failure warns and keeps the cache; never make it fatal.
+- **`wowdev unused` is advisory, never in the gate.** Every finding needs a human: `_G[...]`
+  lookups, XML `inherits` and other addons are invisible to it, and FloLib functions one Flo
+  addon doesn't call may be the other's (FloLib is a shared global library, highest
+  `FLOLIB_VERSION` wins). Locale "missing" is the exception: with an enUS base, AceLocale
+  raises "Missing entry" through the error handler, so treat it as a bug.
+- **`analyse()` tracks registers holding `_G`**; any opcode in `_WRITES_A` clears one. Without
+  that, `bar.x = …` after a reused register read as a global definition (2026-11-05).
 - **The index is shared across threads** (the MCP server runs tools on anyio workers):
   `Index` keeps one SQLite connection per thread. Don't go back to a single connection.
 - **No Claude attribution** in commits here or in the addon repos (jim, 2026-11-05): no

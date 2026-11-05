@@ -18,6 +18,8 @@
                                      Lua errors BugGrabber saved on the game PC
     wowdev taint [ADDON] [--flavor F] [-v]  the client's taint.log, grouped, for one addon
     wowdev spell ID|NAME [--flavor F] spell id, rank, duration and school per client
+    wowdev unused [ADDON...] [-v]    dead files, media, globals, locals, libs,
+                                     locale keys and duplicated code (advisory)
     wowdev mcp                       run the MCP server on stdio
 
 ADDON is a path or a directory name under ~/projects/wowaddons. `bump` and
@@ -173,6 +175,10 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("query", help="spell id or name")
     sp.add_argument("--flavor", action="append")
     sp.add_argument("--json", action="store_true")
+    un = sub.add_parser("unused")
+    un.add_argument("addons", nargs="*")
+    un.add_argument("-v", "--verbose", action="store_true")
+    un.add_argument("--json", action="store_true")
     sub.add_parser("mcp")
     args = ap.parse_args(argv)
 
@@ -204,6 +210,17 @@ def main(argv: list[str] | None = None) -> int:
             from . import game
 
             print(game.format_client_builds(game.client_builds()))
+        return 0
+    if args.cmd == "unused":
+        from . import unused as unused_mod
+        from .check import discover, resolve_addon
+
+        dirs = [resolve_addon(a) for a in args.addons] if args.addons else discover()
+        reports = [unused_mod.unused(d) for d in dirs]
+        if args.json:
+            print(json.dumps(reports, indent=1))
+        else:
+            print("\n\n".join(unused_mod.format_report(r, args.verbose) for r in reports))
         return 0
     if args.cmd == "spell":
         from .server import wow_spell

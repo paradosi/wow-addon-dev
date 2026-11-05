@@ -65,6 +65,12 @@ That tooling is what this project provides.
   description from the DB2 tables of the same build (via wago.tools), so an
   addon's spell tables can be checked: does this id exist on TBC, which rank is
   it, how long does the totem last.
+- **A dead-weight and duplication report (`wowdev unused`)**: files shipped
+  but never loaded, media nothing names, globals nothing reads, unused locals
+  and unreachable code, libraries nothing uses, stale locale keys (and keys
+  looked up but missing from enUS, which AceLocale reports as an error), and
+  blocks of identical code with every place they occur. Advisory, never part
+  of the gate: each line is a candidate to check before deleting.
 - **Blizzard's UI source per client**, searchable and readable, so you can see
   how Blizzard calls an API or how a deprecated function was reimplemented.
 
@@ -133,6 +139,8 @@ wowdev errors [ADDON] [--flavor F] [--sessions N|--all] [-v] [--json]
                                  Lua errors BugGrabber saved on the game PC
 wowdev taint [ADDON] [--flavor F] [-v] the client's taint.log, grouped, for one addon
 wowdev spell ID|NAME [--flavor F] spell id, rank, duration and school per client
+wowdev unused [ADDON...] [-v] [--json]  dead files, media, globals, locals, libs,
+                                 locale keys and duplicated code (advisory)
 wowdev mcp                       run the MCP server on stdio
 ```
 
@@ -207,7 +215,7 @@ git -C iChat commit -am "v1.4.11: …" && git -C iChat tag v1.4.11 && git -C iCh
 
 ## MCP server
 
-Seventeen tools, all read-only (annotated `readOnlyHint`):
+Eighteen tools, all read-only (annotated `readOnlyHint`):
 
 | Tool | Answers |
 |---|---|
@@ -223,6 +231,7 @@ Seventeen tools, all read-only (annotated `readOnlyHint`):
 | `wow_spell` | a spell by id or name, per client: rank, duration, school, description. A name returns every rank's id |
 | `wow_check_addon` | the cross-flavor scan of an addon directory |
 | `wow_check_gate` | the whole `./check` gate for one addon |
+| `wow_unused` | the `wowdev unused` report for one addon: dead files, media, globals, locals, libs, locale keys, duplicated blocks |
 | `wow_addons` | the addons under `~/projects/wowaddons`: package-as name, version, targeted clients |
 | `wow_game_taint` | the client's `Logs/taint.log` on the game PC, grouped into headline + stack, filtered to one addon, repeats counted, blocked actions totalled (`openWorldHint`) |
 | `wow_game_clients` | the game PC's installed builds (launcher `.build.info`) next to the index's: says whether the client needs patching or the index is a build behind (`openWorldHint`) |
@@ -270,9 +279,10 @@ src/wowdev/
   luals.py     headless lua-language-server with per-flavor FrameXML types
   package.py   BigWigsMods/packager dry run + zip inspection
   check.py     the gate: syntax, luacheck, toc, api (+ types, package)
+  unused.py    advisory dead-weight / duplication report (not part of the gate)
   spells.py    wago.tools DB2 exports (SpellName, Spell, SpellMisc, SpellDuration) per build
   game.py      live loop over ssh + PowerShell: deploy / restore / BugGrabber errors
-  server.py    MCP server (mcp 2.x MCPServer), 17 read-only tools
+  server.py    MCP server (mcp 2.x MCPServer), 18 read-only tools
   cli.py       `wowdev` subcommands; `setup` installs pinned tools
 tests/test_core.py
 ```

@@ -405,3 +405,41 @@ def test_taint_log_grouped_and_filtered(monkeypatch):
     assert g["stack"][0].startswith("Interface/AddOns/FloTotemBar/FloLib.lua:500")
     assert r["taintLog_cvar"] == 'SET taintLog "1"'
     assert len(game.taint(None, "classic_anniversary")["entries"]) == 2
+
+
+def test_reused_g_register_is_not_a_global_definition(tmp_path: Path):
+    f = tmp_path / "t.lua"
+    f.write_text('local f = _G["Foo"]\nlocal bar = {}\nbar.settings = 1\n_G["Real"] = 2\n')
+    _, defines, keys = analyse(f, "t.lua", set())
+    assert "Real" in defines
+    assert "settings" not in defines and "settings" in keys
+
+
+def test_unused_finds_dead_weight(tmp_path: Path):
+    from wowdev.unused import unused
+
+    a = tmp_path / "Demo"
+    (a / "media").mkdir(parents=True)
+    (a / "Demo.toc").write_text("## Interface: 20506\n## SavedVariables: DemoDB\ncore.lua\n")
+    block = "\n".join(f"    total = total + someValue{i} * factor  -- line {i}" for i in range(10))
+    (a / "core.lua").write_text(
+        "local L = {}\n"
+        'L["Used"] = "Used"\nL["Stale"] = "Stale"\n'
+        "local function Never() end\n"
+        "function Demo_Dead() end\n"
+        "function Demo_Live() end\n"
+        "DemoDB = DemoDB or {}\n"
+        f"function A(total)\n{block}\n    return total\nend\n"
+        f"function B(total)\n{block}\n    return total\nend\n"
+        'print(L["Used"], Demo_Live, A, B, "media/used")\n'
+    )
+    (a / "extra.lua").write_text("print(1)\n")
+    (a / "media" / "used.tga").write_bytes(b"x")
+    (a / "media" / "orphan.tga").write_bytes(b"x")
+    (a / ".pkgmeta").write_text("package-as: Demo\nignore:\n  - README.md\n")
+    r = unused(a)
+    assert r["unloaded"] == ["extra.lua"]
+    assert r["media"] == ["media/orphan.tga"]
+    assert [g["name"] for g in r["globals"]] == ["Demo_Dead"]
+    assert any("Never" in x["message"] for x in r["locals"])
+    assert r["duplicates"] and r["duplicates"][0]["count"] == 2

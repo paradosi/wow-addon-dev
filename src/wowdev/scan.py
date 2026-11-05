@@ -34,6 +34,12 @@ _LIB_DIR = re.compile(r"(^|/)(libs?|libraries)(/|$)", re.I)
 # globals every addon may read that no data file lists. LibStub is created by
 # `_G[LIBSTUB_MAJOR] = ...`, a computed key no static pass can see.
 _ALWAYS = {"_G", "self", "...", "arg", "LibStub"}
+# opcodes that overwrite register A: a register that held _G stops being _G
+_WRITES_A = {
+    "MOVE", "LOADK", "LOADBOOL", "LOADNIL", "GETUPVAL", "GETTABLE", "NEWTABLE",
+    "SELF", "ADD", "SUB", "MUL", "DIV", "MOD", "POW", "UNM", "NOT", "LEN",
+    "CONCAT", "CALL", "TESTSET", "CLOSURE", "VARARG", "FORPREP", "FORLOOP",
+}  # fmt: skip
 _EVENTISH = re.compile(r'^"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+"$')
 
 
@@ -325,6 +331,10 @@ def analyse(path: Path, rel: str, namespaces: set[str]) -> tuple[list[Ref], set[
                 and nxt.op in ("TEST", "TESTSET")
             ):
                 tested.add("method:" + ins.comment.split('"')[1])  # if frame.SetFoo then
+            if ins.op in _WRITES_A and ins.args:
+                # `bar.x = ...` after the register that once held _G was reused
+                # is a field write, not a global definition
+                g_regs.discard(ins.args[0])
     return refs, defines, keys
 
 
