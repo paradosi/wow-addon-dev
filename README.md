@@ -209,6 +209,7 @@ name, so adding a client (say `classic` for Mists) is one entry plus `wowdev ref
 | `just test` | pytest. Index-backed tests skip if no index is built |
 | `just lint` / `just fmt` | ruff check + format |
 | `just refresh` / `just build` | update upstream and rebuild / rebuild offline |
+| `just install-timer` | install the weekly refresh as a system timer (Tue 06:00; needs sudo) |
 | `just check [ADDON] [--types] [--package]` | the gate |
 | `just wowdev …` | any subcommand |
 | `just run` | the MCP server on stdio |
@@ -314,7 +315,7 @@ changelog drift.
 
 - **`no index at …`**: run `wowdev refresh` (or `just setup` on a fresh host).
 - **The index is stale**: `wowdev status` shows its age, and `wow_status` reports
-  `stale` after 8 days. Nothing refreshes it automatically yet.
+  `stale` after 8 days. `just install-timer` sets up the weekly refresh; `systemctl status wowdev-refresh` shows the last run.
 - **A reference is reported MISSING but it is guarded**: the scanner sees guards
   on globals, on flavor-flag fields and on version probes, but not on plain locals
   (`local isClassic = …; if isClassic then`). Use a field or test the global directly.

@@ -25,6 +25,10 @@ Python + `mcp` 2.x (`MCPServer`, not v1's `FastMCP`). Runtime deps outside Pytho
   definitions live in `def` with `deprecated` / `lod` flags.
 - Anything that writes to an addon repo (`bump`, `interface`) prints a diff and needs
   `-w`. Those stay CLI-only; the MCP tools are all read-only.
+- **No Claude attribution** in commits here or in the addon repos (jim, 2026-11-05): no
+  `Co-Authored-By: Claude`, no `Claude-Session:`. `.claude/settings.json` blanks it.
+- The weekly refresh is `systemd/wowdev-refresh.{service,timer}` (Tue 06:00), installed with
+  `just install-timer`. `wow_status` still reports staleness if it ever stops.
 
 ## Gotchas
 
@@ -49,8 +53,6 @@ Python + `mcp` 2.x (`MCPServer`, not v1's `FastMCP`). Runtime deps outside Pytho
 - Live game loop (deploy to `northpc`, read BugGrabber errors): no WoW subscription.
   Install is at `C:\Program Files (x86)\Battle.net Games\World of Warcraft`; use
   `powershell -EncodedCommand` over `ssh northpc`. The README has the details.
-- A weekly refresh timer: a system unit was refused by the permission layer; `wow_status`
-  reports staleness instead.
 
 ## Secrets
 

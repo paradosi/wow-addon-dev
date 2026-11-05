@@ -42,3 +42,10 @@ wowdev *ARGS:
 # Run the MCP server on stdio (what Claude Code launches)
 run:
     uv run wowdev mcp
+
+# Install the weekly index refresh (Tue 06:00, after patch day) as a system timer
+install-timer:
+    sudo install -m 644 systemd/wowdev-refresh.service systemd/wowdev-refresh.timer /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now wowdev-refresh.timer
+    systemctl list-timers wowdev-refresh.timer --no-pager

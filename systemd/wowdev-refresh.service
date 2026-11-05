@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh the wow-addon-dev API index from upstream
+Documentation=file:///home/jim/projects/wow-addon-dev/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=jim
+ExecStart=/home/jim/bin/wowdev refresh
+Nice=10
