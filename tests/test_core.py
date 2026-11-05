@@ -183,3 +183,18 @@ def test_flavor_flag_guard(tmp_path: Path):
     )
     assert ("NUM_REAGENTBAG_FRAMES", True) in refs
     assert ("GetSpellInfo", True) in refs
+
+
+def test_guarded_deprecated_fallback_is_a_note(tmp_path: Path):
+    from wowdev.scan import scan
+
+    a = tmp_path / "Shim"
+    a.mkdir()
+    (a / "Shim.toc").write_text("## Interface: 20506\nShim.lua\n")
+    (a / "Shim.lua").write_text(
+        "local F = (C_CombatLog and C_CombatLog.GetCurrentEventInfo) or CombatLogGetCurrentEventInfo\n"
+        'local b = UnitBuff("player", 1)\n'
+    )
+    fr = scan(a)["flavors"]["classic_anniversary"]
+    assert [m["name"] for m in fr["deprecated_shim"]] == ["UnitBuff"]
+    assert "CombatLogGetCurrentEventInfo" in fr["guarded_deprecated"]

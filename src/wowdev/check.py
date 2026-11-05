@@ -139,6 +139,10 @@ def _api(addon: Path) -> Section:
             s.notes.append(
                 f"[{flavor}] {m['at']} :{m['method']}() not on any widget here (receiver unknown)"
             )
+        if fr.get("guarded_deprecated"):
+            s.notes.append(
+                f"[{flavor}] guarded fallback to deprecated: {', '.join(sorted(fr['guarded_deprecated']))}"
+            )
         if fr["unknown"]:
             s.notes.append(f"[{flavor}] unknown everywhere: {', '.join(fr['unknown'])}")
     return s

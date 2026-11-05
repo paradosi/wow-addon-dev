@@ -379,6 +379,9 @@ def scan(addon_dir: Path, flavors: list[str] | None = None, include_libs: bool =
                     "load_on_demand": [],
                     "methods_missing": [],
                     "guarded_absent": defaultdict(int),
+                    # deprecated fallback behind a guard: runs only where the
+                    # modern API is missing, so a note rather than a warning
+                    "guarded_deprecated": defaultdict(int),
                     "unknown": defaultdict(list),
                 },
             )
@@ -422,7 +425,9 @@ def scan(addon_dir: Path, flavors: list[str] | None = None, include_libs: bool =
                     if r.guarded and st == "absent":
                         fr["guarded_absent"][r.name] += 1
                         continue
-                    if st == "deprecated_shim":
+                    if st == "deprecated_shim" and r.guarded:
+                        fr["guarded_deprecated"][r.name] += 1
+                    elif st == "deprecated_shim":
                         fr["deprecated_shim"].append({"name": r.name, "at": loc})
                     elif st == "load_on_demand":
                         fr["load_on_demand"].append({"name": r.name, "at": loc})
@@ -443,6 +448,7 @@ def scan(addon_dir: Path, flavors: list[str] | None = None, include_libs: bool =
                             fr["unknown"][r.name].append(loc)
     for fr in report["flavors"].values():
         fr["guarded_absent"] = dict(fr["guarded_absent"])
+        fr["guarded_deprecated"] = dict(fr["guarded_deprecated"])
         fr["unknown"] = {k: v[:3] for k, v in sorted(fr["unknown"].items())}
         ifs = [i for t in fr["toc"] for i in t["interface"]]
         fr["interface_outdated"] = bool(ifs) and max(ifs) < (fr["interface_current"] or 0)
@@ -493,6 +499,11 @@ def format_report(report: dict) -> str:
             out.append(
                 "  ok guarded, absent here (expected compat idiom): "
                 + ", ".join(sorted(fr["guarded_absent"]))
+            )
+        if fr["guarded_deprecated"]:
+            out.append(
+                "  ok guarded fallback to a deprecated shim (used only if the new API is missing): "
+                + ", ".join(sorted(fr["guarded_deprecated"]))
             )
         if fr["unknown"]:
             out.append(
