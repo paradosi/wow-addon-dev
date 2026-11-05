@@ -31,6 +31,10 @@ class Flavor:
     toc_suffixes: tuple[str, ...]
     # values Blizzard's TOCs test with [AllowLoadGameType ...] in this client
     game_types: frozenset[str]
+    # What Blizzard's TOC path placeholders expand to: `Deprecated_Specialization_[Game].lua`,
+    # `[Family]\\CombatLogConstants.lua`. Every candidate that exists on disk is loaded.
+    # Checked against each client's real global list (BIR FrameXML.lua) 2026-11-05.
+    toc_tokens: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     @property
     def ui_dir(self) -> Path:
@@ -53,6 +57,7 @@ FLAVORS: dict[str, Flavor] = {
             ("retail", "mainline", "midnight"),
             ("Mainline",),
             frozenset({"mainline", "standard"}),
+            (("Game", ("Mainline",)), ("Family", ("Mainline",))),
         ),
         Flavor(
             "classic_anniversary",
@@ -60,6 +65,7 @@ FLAVORS: dict[str, Flavor] = {
             ("tbc", "bcc", "anniversary", "classic_anniversary"),
             ("TBC", "BCC", "Classic"),
             frozenset({"tbc", "classic", "standard"}),
+            (("Game", ("TBC",)), ("Family", ("Classic",))),
         ),
         Flavor(
             "classic_era",
@@ -67,6 +73,7 @@ FLAVORS: dict[str, Flavor] = {
             ("vanilla", "era", "classic_era"),
             ("Vanilla", "Classic"),
             frozenset({"vanilla", "classic", "standard"}),
+            (("Game", ("Vanilla",)), ("Family", ("Classic",))),
         ),
         # Internally "Camelot" (WOW_PROJECT_CAMELOT = 18). It ships Camelot/
         # override folders gated on [AllowLoadGameType camelot]. Treating it as
@@ -77,6 +84,9 @@ FLAVORS: dict[str, Flavor] = {
             ("forever", "wowforever", "camelot"),
             ("Forever", "Camelot"),
             frozenset({"camelot", "standard"}),
+            # approximate: neither folder alone matches the client's global list
+            # (Camelot 88%, Mainline 75%), so both are taken where they exist
+            (("Game", ("Camelot", "Mainline")), ("Family", ("Camelot", "Mainline"))),
         ),
     )
 }

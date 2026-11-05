@@ -387,15 +387,28 @@ def loaded_files(f: Flavor) -> list[tuple[Path, bool]]:
             if not all(_cond_ok(f, c, v) for c, v in conds):
                 continue
             ref = _TOC_COND.sub("", ln).strip()
-            p = _ci_path(addon, ref)
-            if not p:
-                continue
-            if p.suffix.lower() == ".lua" and p not in seen:
-                seen.add(p)
-                out.append((p, lod))
-            elif p.suffix.lower() == ".xml":
-                walk_xml(p, lod)
+            for p in filter(None, (_ci_path(addon, r) for r in expand_tokens(f, ref))):
+                if p.suffix.lower() == ".lua" and p not in seen:
+                    seen.add(p)
+                    out.append((p, lod))
+                elif p.suffix.lower() == ".xml":
+                    walk_xml(p, lod)
     return out
+
+
+def expand_tokens(f: Flavor, ref: str) -> list[str]:
+    """A TOC line with `[Game]` / `[Family]` placeholders, as the paths this
+    client would try. A missing file is skipped by the client, so callers keep
+    only the candidates that exist."""
+    refs = [ref]
+    for token, values in f.toc_tokens:
+        tag = f"[{token}]"
+        refs = (
+            [r.replace(tag, v) for r in refs for v in values]
+            if any(tag in r for r in refs)
+            else refs
+        )
+    return refs
 
 
 _LUAC_SET = re.compile(

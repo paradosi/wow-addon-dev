@@ -95,6 +95,19 @@ def test_index_known_facts():
     assert idx.status("UnitAura", "live") == "absent"
     assert idx.status("DEFAULT_CHAT_FRAME", "classic_era") == "blizzard_ui"
     assert idx.status("Slider:SetObeyStepOnDrag", "live") == "native"
+    # defined only in Deprecated_Specialization_[Game].lua: needs TOC placeholder expansion
+    assert idx.status("GetTalentInfo", "classic_anniversary") == "deprecated_shim"
+    assert idx.status("GetTalentInfo", "classic_era") == "deprecated_shim"
+
+
+def test_toc_placeholders_expand_per_client():
+    from wowdev.build import expand_tokens
+    from wowdev.config import FLAVORS
+
+    assert expand_tokens(FLAVORS["classic_anniversary"], "X_[Game].lua") == ["X_TBC.lua"]
+    assert expand_tokens(FLAVORS["classic_era"], "[Family]\\A.lua") == ["Classic\\A.lua"]
+    assert expand_tokens(FLAVORS["live"], "[Family]\\[Game].lua") == ["Mainline\\Mainline.lua"]
+    assert expand_tokens(FLAVORS["live"], "plain.lua") == ["plain.lua"]
 
 
 # ------------------------------------------------------------------ toc tooling
