@@ -224,6 +224,25 @@ def wow_compat(names: list[str], flavors: list[str] | None = None) -> dict:
     return {"flavors": fl, "matrix": matrix, "legend": STATUS_DOC}
 
 
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True, openWorldHint=True))
+def wow_game_errors(
+    addon: str | None = None, flavor: str = "classic_anniversary", sessions: int | None = 1
+) -> dict:
+    """Lua errors BugGrabber saved in a client on the game PC (over ssh), newest
+    first. `addon` is an installed folder name or a repo under ~/projects/wowaddons;
+    only errors whose message or stack mention that addon are kept. `sessions`:
+    the most recent N login/reload sessions (None = all). BugGrabber writes its
+    file at logout or /reload, so ask for a /reload after testing. Installing a
+    build is CLI-only: `wowdev deploy <addon>`."""
+    from . import game
+    from .config import resolve_flavor
+
+    try:
+        return game.errors(addon, resolve_flavor(flavor), sessions)
+    except game.GameHostError as e:
+        return {"error": str(e)}
+
+
 @mcp.tool(annotations=READ_ONLY)
 def wow_search(
     query: str, kind: str | None = None, flavor: str | None = None, limit: int = 20

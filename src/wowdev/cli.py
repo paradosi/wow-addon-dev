@@ -11,6 +11,10 @@
     wowdev package ADDON             local packager dry run, inspect the zip
     wowdev bump ADDON X.Y.Z [-w]     version everywhere + changelog heading
     wowdev interface ADDON... [-w]   raise TOC Interface to current clients
+    wowdev deploy ADDON [--flavor F] build and install into the game PC's clients
+    wowdev restore ADDON [--flavor F] put back the install the first deploy replaced
+    wowdev errors [ADDON] [--flavor F] [--sessions N|--all] [-v]
+                                     Lua errors BugGrabber saved on the game PC
     wowdev mcp                       run the MCP server on stdio
 
 ADDON is a path or a directory name under ~/projects/wowaddons. `bump` and
@@ -139,6 +143,21 @@ def main(argv: list[str] | None = None) -> int:
     i = sub.add_parser("interface")
     i.add_argument("addons", nargs="*")
     i.add_argument("-w", "--write", action="store_true")
+    dp = sub.add_parser("deploy")
+    dp.add_argument("addon")
+    dp.add_argument(
+        "--flavor", action="append", help="repeatable; default: every flavor the TOCs target"
+    )
+    rs = sub.add_parser("restore")
+    rs.add_argument("addon")
+    rs.add_argument("--flavor", action="append")
+    er = sub.add_parser("errors")
+    er.add_argument("addon", nargs="?")
+    er.add_argument("--flavor", default="classic_anniversary")
+    er.add_argument("--sessions", type=int, default=1, help="most recent N sessions (default 1)")
+    er.add_argument("--all", action="store_true", help="every session in the file")
+    er.add_argument("-v", "--verbose", action="store_true", help="full stacks and locals")
+    er.add_argument("--json", action="store_true")
     sub.add_parser("mcp")
     args = ap.parse_args(argv)
 
@@ -233,6 +252,32 @@ def main(argv: list[str] | None = None) -> int:
             print(package.format_result(res))
             rc = rc or (1 if any(f.level == "error" for f in res.findings) else 0)
         return rc
+    if args.cmd in ("deploy", "restore", "errors"):
+        from . import game
+        from .config import resolve_flavor
+
+        flavors = (
+            [resolve_flavor(f) for f in (getattr(args, "flavor", None) or [])]
+            if args.cmd != "errors"
+            else None
+        )
+        try:
+            if args.cmd == "deploy":
+                r = game.deploy(_addons([args.addon])[0], flavors)
+                print(game.format_deploy(r))
+                return 1 if r.errors else 0
+            if args.cmd == "restore":
+                for f, msg in game.restore(_addons([args.addon])[0], flavors).items():
+                    print(f"  {f:20} {msg}")
+                return 0
+            r = game.errors(
+                args.addon, resolve_flavor(args.flavor), None if args.all else args.sessions
+            )
+            print(json.dumps(r, indent=1) if args.json else game.format_errors(r, args.verbose))
+            return 1 if r["errors"] else 0
+        except game.GameHostError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
     if args.cmd == "bump":
         from .toc import plan_bump
 

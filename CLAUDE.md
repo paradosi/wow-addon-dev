@@ -25,6 +25,12 @@ Python + `mcp` 2.x (`MCPServer`, not v1's `FastMCP`). Runtime deps outside Pytho
   definitions live in `def` with `deprecated` / `lod` flags.
 - Anything that writes to an addon repo (`bump`, `interface`) prints a diff and needs
   `-w`. Those stay CLI-only; the MCP tools are all read-only.
+- **The live loop is `game.py`** (`wowdev deploy|restore|errors`, MCP `wow_game_errors`).
+  Everything is one `ssh northpc powershell -EncodedCommand` per step, files come back
+  base64. Deploy only replaces an existing install by default, and backs up the user's
+  own copy once (outside `AddOns`). BugGrabber only writes at logout or `/reload`.
+- **The index is shared across threads** (the MCP server runs tools on anyio workers):
+  `Index` keeps one SQLite connection per thread. Don't go back to a single connection.
 - **No Claude attribution** in commits here or in the addon repos (jim, 2026-11-05): no
   `Co-Authored-By: Claude`, no `Claude-Session:`. `.claude/settings.json` blanks it.
 - The weekly refresh is `systemd/wowdev-refresh.{service,timer}` (Tue 06:00), installed with
@@ -50,9 +56,6 @@ Python + `mcp` 2.x (`MCPServer`, not v1's `FastMCP`). Runtime deps outside Pytho
 
 ## Not built (deliberately, 2026-11-05)
 
-- Live game loop (deploy to `northpc`, read BugGrabber errors): no WoW subscription.
-  Install is at `C:\Program Files (x86)\Battle.net Games\World of Warcraft`; use
-  `powershell -EncodedCommand` over `ssh northpc`. The README has the details.
 
 ## Secrets
 

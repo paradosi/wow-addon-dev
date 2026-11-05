@@ -212,3 +212,34 @@ def test_index_usable_from_worker_threads():
     with ThreadPoolExecutor(8) as ex:
         got = list(ex.map(lambda _: idx.status("GetSpellInfo", "classic_era"), range(32)))
     assert got == ["native"] * 32
+
+
+def test_game_errors_filters_by_addon_and_session(monkeypatch):
+    from wowdev import game
+
+    db = {
+        "session": 10,
+        "errors": [
+            {
+                "message": "Interface/AddOns/FloTotemBar/FloLib.lua:1: boom",
+                "session": 10,
+                "counter": 2,
+                "time": 1778463495,
+            },
+            {
+                "message": "Interface/AddOns/Other/x.lua:1: no",
+                "session": 10,
+                "time": "2026/01/01 00:00:00",
+            },
+            {
+                "message": "x",
+                "stack": "[Interface/AddOns/FloTotemBar/FloTotemBar.lua]:5: in f",
+                "session": 7,
+            },
+        ],
+    }
+    monkeypatch.setattr(game, "_bug_grabber", lambda f: ("p", "t", db))
+    r = game.errors("FloTotemBar", "classic_anniversary", sessions=1)
+    assert [e["count"] for e in r["errors"]] == [2]
+    assert r["errors"][0]["time"].startswith("2026/")
+    assert len(game.errors("FloTotemBar", "classic_anniversary", sessions=None)["errors"]) == 2

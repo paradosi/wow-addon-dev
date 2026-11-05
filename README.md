@@ -65,10 +65,10 @@ live builds 12.1.5 (retail), 2.5.6 (TBC Anniversary), 1.15.9 (Classic Era) and
 1.60.1 (Forever).
 
 > [!NOTE]
-> **There is no live-game loop yet.** Deploying a build into the WoW install on
-> `northpc` and reading BugGrabber errors back was scoped but deferred on
-> 2026-11-05, because there is no active subscription to test with. The install
-> was located (see [Troubleshooting](#troubleshooting)) for when it is picked up.
+> **The live-game loop runs against `northpc`** (since 2026-11-05): `wowdev deploy`
+> installs a build into the clients that already have the addon, and `wowdev errors`
+> reads back what BugGrabber caught. The static gate still runs first; the game is
+> where combat lockdown, taint and timing get confirmed.
 
 ## Requirements
 
@@ -116,6 +116,10 @@ wowdev types ADDON [--flavor F]  lua-language-server type check (advisory)
 wowdev package ADDON             local packager dry run, inspect the zip
 wowdev bump ADDON X.Y.Z [-w]     version everywhere + changelog heading
 wowdev interface ADDON... [-w]   raise TOC Interface to current clients
+wowdev deploy ADDON [--flavor F] build and install into the game PC's clients
+wowdev restore ADDON [--flavor F] put back the install the first deploy replaced
+wowdev errors [ADDON] [--flavor F] [--sessions N|--all] [-v] [--json]
+                                 Lua errors BugGrabber saved on the game PC
 wowdev mcp                       run the MCP server on stdio
 ```
 
@@ -158,6 +162,26 @@ $ wowdev scan FloTotemBar-Classic
   ok guarded, absent here (expected compat idiom): BOOKTYPE_SPELL, LibStub, …
 ```
 
+**Try a build in game, then read what broke:**
+
+```console
+$ wowdev deploy FloTotemBar-Classic
+# deploy FloTotemBar-Classic (installs as FloTotemBar) to northpc
+zip: FloTotemBar-v1.2.3-2-g1d0c802.zip
+  classic_anniversary  installed 1.2.4
+  classic_era          skipped: not installed in this client (pass --flavor to add it)
+$ wowdev errors iChat --all          # after a /reload or logout in game
+# iChat errors on classic_anniversary -- 1 of 13 in file, session 250 (last all), saved 2026-05-10T21:42:47
+x2  session 243  2026/02/23 13:40:01
+  Interface/AddOns/iChat/portraits.lua:123: attempt to call global 'FindUnitByName' (a nil value)
+```
+
+Deploy only replaces an existing install unless `--flavor` says otherwise. The
+first time it replaces your own copy, that copy is moved to
+`%USERPROFILE%\wowdev-backups\<flavor>-<time>\` (outside `AddOns`, so the
+client never loads it) and `wowdev restore` puts it back. Later deploys carry a
+`.wowdev-deploy` marker and are simply replaced.
+
 **A release, previewed and then written:**
 
 ```sh
@@ -170,7 +194,7 @@ git -C iChat commit -am "v1.4.11: …" && git -C iChat tag v1.4.11 && git -C iCh
 
 ## MCP server
 
-Thirteen tools, all read-only (annotated `readOnlyHint`):
+Fourteen tools, all read-only (annotated `readOnlyHint`):
 
 | Tool | Answers |
 |---|---|
@@ -186,8 +210,9 @@ Thirteen tools, all read-only (annotated `readOnlyHint`):
 | `wow_check_addon` | the cross-flavor scan of an addon directory |
 | `wow_check_gate` | the whole `./check` gate for one addon |
 | `wow_addons` | the addons under `~/projects/wowaddons`: package-as name, version, targeted clients |
+| `wow_game_errors` | Lua errors BugGrabber saved in a client on the game PC, filtered to one addon and the last N sessions (reaches `northpc` over ssh, so `openWorldHint`) |
 
-Release and packaging stay CLI-only, so any change to addon files is a
+Release, packaging and `deploy` stay CLI-only, so any change to addon files is a
 deliberate command rather than a tool call.
 
 ## Configuration
@@ -196,8 +221,10 @@ deliberate command rather than a tool call.
 |---|---|---|
 | `WOWDEV_DATA` | `~/data/wowdev` | upstream clones, `index.sqlite`, `tools/`, `releases/` |
 | `WOWDEV_LUA` | `lua5.1` | interpreter used to evaluate Blizzard's data tables |
+| `WOWDEV_GAME_HOST` | `northpc` | ssh host of the Windows PC that runs WoW (key auth, `BatchMode`) |
+| `WOWDEV_WOW_ROOT` | `C:\Program Files (x86)\Battle.net Games\World of Warcraft` | the WoW install on it; client folders are mapped in `game.CLIENT_DIRS` |
 
-Nothing is secret: every input is a public repository. Clients are configured in
+Nothing is secret: every input is a public repository, and the game PC is reached with the existing ssh key. Clients are configured in
 `src/wowdev/config.py` (`FLAVORS`). Each entry's key **is** the upstream branch
 name, so adding a client (say `classic` for Mists) is one entry plus `wowdev refresh`.
 
@@ -227,7 +254,8 @@ src/wowdev/
   luals.py     headless lua-language-server with per-flavor FrameXML types
   package.py   BigWigsMods/packager dry run + zip inspection
   check.py     the gate: syntax, luacheck, toc, api (+ types, package)
-  server.py    MCP server (mcp 2.x MCPServer), 13 read-only tools
+  game.py      live loop over ssh + PowerShell: deploy / restore / BugGrabber errors
+  server.py    MCP server (mcp 2.x MCPServer), 14 read-only tools
   cli.py       `wowdev` subcommands; `setup` installs pinned tools
 tests/test_core.py
 ```
