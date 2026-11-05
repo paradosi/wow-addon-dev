@@ -198,3 +198,15 @@ def test_guarded_deprecated_fallback_is_a_note(tmp_path: Path):
     fr = scan(a)["flavors"]["classic_anniversary"]
     assert [m["name"] for m in fr["deprecated_shim"]] == ["UnitBuff"]
     assert "CombatLogGetCurrentEventInfo" in fr["guarded_deprecated"]
+
+
+def test_index_usable_from_worker_threads():
+    from concurrent.futures import ThreadPoolExecutor
+
+    from wowdev.index import Index
+
+    idx = Index()
+    idx.status("GetSpellInfo", "classic_era")  # open on this thread first
+    with ThreadPoolExecutor(8) as ex:
+        got = list(ex.map(lambda _: idx.status("GetSpellInfo", "classic_era"), range(32)))
+    assert got == ["native"] * 32

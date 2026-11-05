@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from functools import cached_property
 from pathlib import Path
 
@@ -29,7 +30,10 @@ STATUS_DOC = {
 class Index:
     def __init__(self, path: Path = DB_PATH):
         self.path = path
-        self._db: sqlite3.Connection | None = None
+        # One read-only connection per thread: the MCP server runs each tool
+        # call on an anyio worker thread, and a sqlite3 connection refuses use
+        # from any thread but the one that opened it (concurrent calls failed).
+        self._local = threading.local()
         self._mtime = 0.0
 
     @property
@@ -39,15 +43,18 @@ class Index:
                 f"no index at {self.path} — run `just refresh` in the wow-addon-dev project"
             )
         mtime = self.path.stat().st_mtime
-        if self._db is None or mtime != self._mtime:  # rebuilt underneath us: reopen
-            if self._db is not None:
-                self._db.close()
-            self._db = sqlite3.connect(f"file:{self.path}?mode=ro", uri=True)
-            self._db.row_factory = sqlite3.Row
+        if mtime != self._mtime:  # rebuilt underneath us: drop derived caches
             self._mtime = mtime
             self.__dict__.pop("flavors", None)
             self.__dict__.pop("_sets", None)
-        return self._db
+        loc = self._local
+        if getattr(loc, "db", None) is None or loc.mtime != mtime:
+            if getattr(loc, "db", None) is not None:
+                loc.db.close()
+            loc.db = sqlite3.connect(f"file:{self.path}?mode=ro", uri=True)
+            loc.db.row_factory = sqlite3.Row
+            loc.mtime = mtime
+        return loc.db
 
     def q(self, sql: str, *args) -> list[sqlite3.Row]:
         return self.db.execute(sql, args).fetchall()
