@@ -352,7 +352,8 @@ _DEF_TOP = re.compile(r"^(?:function\s+([A-Za-z_][\w.:]*)\s*\(|([A-Za-z_][\w.]*)
 _DEF_INDENTED = re.compile(
     r"^\s+(?:function\s+([A-Za-z_][\w.]*)\s*\(|([A-Za-z_]\w*)\s*=\s*function\b)"
 )
-_TOC_COND = re.compile(r"\[(AllowLoad[A-Za-z]*)\s+([^\]]+)\]")
+_BOOTSTRAP = re.compile(r"\[Bootstrap\]", re.I)
+_TOC_COND = re.compile(r"\[((?:AllowLoad|ExcludeLoad)[A-Za-z]*)\s+([^\]]+)\]")
 _XML_REF = re.compile(r'<(Script|Include)\s+file="([^"]+)"', re.I)
 
 
@@ -377,6 +378,8 @@ def _cond_ok(f: Flavor, cond: str, value: str) -> bool:
     vals = {v.strip().lower() for v in value.replace(",", " ").split()}
     if cond.lower() == "allowloadgametype":
         return bool(vals & f.game_types)
+    if cond.lower() == "excludeloadgametype":
+        return not (vals & f.game_types)
     if cond.lower() == "allowload":  # Game / Glue / Both
         return bool(vals & {"game", "both"})
     return True  # AllowLoadEnvironment etc.: not a flavor question
@@ -434,6 +437,10 @@ def loaded_files(f: Flavor) -> list[tuple[Path, bool]]:
             f, "AllowLoadGameType", headers["allowloadgametype"]
         ):
             continue
+        if "excludeloadgametype" in headers and not _cond_ok(
+            f, "ExcludeLoadGameType", headers["excludeloadgametype"]
+        ):
+            continue
         if headers.get("allowload", "both").lower() == "glue":
             continue
         addons.append((addon, lines, headers.get("loadondemand", "0").strip() == "1"))
@@ -449,12 +456,18 @@ def loaded_files(f: Flavor) -> list[tuple[Path, bool]]:
             if not all(_cond_ok(f, c, v) for c, v in conds):
                 continue
             ref = _TOC_COND.sub("", ln).strip()
+            # [Bootstrap]: loaded at startup even when the addon is LoadOnDemand
+            # (AchievementFrame_LoadUI lives in such a file)
+            line_lod = lod
+            if _BOOTSTRAP.search(ref):
+                ref = _BOOTSTRAP.sub("", ref).strip()
+                line_lod = False
             for p in filter(None, (_ci_path(addon, r) for r in expand_tokens(f, ref))):
                 if p.suffix.lower() == ".lua" and p not in seen:
                     seen.add(p)
-                    out.append((p, lod))
+                    out.append((p, line_lod))
                 elif p.suffix.lower() == ".xml":
-                    walk_xml(p, lod)
+                    walk_xml(p, line_lod)
     return out
 
 
@@ -577,7 +590,13 @@ def collect_defs(f: Flavor) -> list[tuple]:
             seen.add(name)
             out.append((f.key, name, rel, ln, int(deprecated), int(lod)))
         for i, line in enumerate(text.splitlines(), 1):
-            m = _DEF_TOP.match(line) or (deprecated and _DEF_INDENTED.match(line))
+            m = _DEF_TOP.match(line)
+            if not m and (m := _DEF_INDENTED.match(line)):
+                # indented: always in deprecated files; elsewhere only a field of a
+                # capitalised global table (AuraUtil.ForEachAura inside an `if`)
+                name = m.group(1) or m.group(2)
+                if not (deprecated or ("." in name or ":" in name) and name[:1].isupper()):
+                    m = None
             if not m:
                 continue
             name = m.group(1) or m.group(2)

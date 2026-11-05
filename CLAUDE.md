@@ -52,6 +52,13 @@ Python + `mcp` 2.x (`MCPServer`, not v1's `FastMCP`). Runtime deps outside Pytho
 - **Blizzard's UI tree for one client contains other clients' files.** Which load is
   decided by TOC suffix (`_Classic.toc` = every Classic client) and `AllowLoadGameType`.
   `loaded_files()` follows that; walking the tree credits retail with Classic shims.
+- **TOC line tags: `[AllowLoad… x]`, `[ExcludeLoad… x]` and a bare `[Bootstrap]`.** A tag the
+  parser does not strip leaves the filename unmatched and the file silently vanishes. Until
+  2026-11-05 Exclude and Bootstrap were not stripped: ~190 Retail functions (every
+  `*_LoadUI`, `AuraUtil.*`) and TBC's `MiniMapTracking` were "absent". `[Bootstrap]` files
+  load at startup even in a LoadOnDemand addon. **Measure after any loader change**: each
+  client's FrameXML dump (`_res(f, "FrameXML")`) vs `collect_defs` — 99.1% Retail, 99.8%
+  TBC/Era, 99.0% Forever that day.
 - Blizzard creates globals inside function bodies and via `_G.X = …`. Only bytecode
   (`SETGLOBAL`) sees them all — don't go back to regex for plain globals.
 - Guard detection (`scan._guarded_pcs`) sees globals, flavor-flag fields

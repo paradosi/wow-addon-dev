@@ -112,6 +112,33 @@ def test_toc_placeholders_expand_per_client():
     assert expand_tokens(FLAVORS["live"], "plain.lua") == ["plain.lua"]
 
 
+def test_toc_exclude_and_bootstrap_tags(tmp_path: Path, monkeypatch):
+    from wowdev import build
+    from wowdev.config import FLAVORS
+
+    ui = tmp_path / "ui"
+    a = ui / "Interface" / "AddOns" / "Blizzard_Probe"
+    (a / "Mainline").mkdir(parents=True)
+    for n in ("Boot.lua", "Mainline/Both.lua", "Mainline/NotCamelot.lua", "Lod.lua"):
+        (a / n).write_text("X = 1\n")
+    (a / "Blizzard_Probe.toc").write_text(
+        "## LoadOnDemand: 1\nBoot.lua [Bootstrap]\n[Family]\\Both.lua\n"
+        "[Family]\\NotCamelot.lua [AllowLoadGameType mainline] [ExcludeLoadGameType camelot]\n"
+        "Lod.lua\n"
+    )
+    monkeypatch.setattr(type(FLAVORS["live"]), "ui_dir", property(lambda self: ui))
+    got = {
+        k: {p.name: lod for p, lod in build.loaded_files(FLAVORS[k])} for k in ("live", "forever")
+    }
+    assert got["live"] == {
+        "Boot.lua": False,
+        "Both.lua": True,
+        "NotCamelot.lua": True,
+        "Lod.lua": True,
+    }
+    assert "NotCamelot.lua" not in got["forever"] and got["forever"]["Boot.lua"] is False
+
+
 # ------------------------------------------------------------------ toc tooling
 
 
