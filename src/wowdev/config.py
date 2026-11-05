@@ -80,18 +80,20 @@ FLAVORS: dict[str, Flavor] = {
             (("Game", ("Vanilla",)), ("Family", ("Classic",))),
             "wow_classic_era",
         ),
-        # Internally "Camelot" (WOW_PROJECT_CAMELOT = 18). It ships Camelot/
-        # override folders gated on [AllowLoadGameType camelot]. Treating it as
-        # camelot+standard is inferred from the TOCs, not documented anywhere.
+        # Internally "Camelot" (WOW_PROJECT_CAMELOT = 18): a Mainline-family
+        # client whose game is Camelot. TOCs load [Family]=Mainline files plus
+        # [Game]=Camelot overlays, and Mainline files gated on
+        # [AllowLoadGameType mainline] load too (Camelot replacements carry
+        # [ExcludeLoadGameType camelot]). Measured against the client's own
+        # FrameXML function dump: 95% found this way, 78% with the earlier
+        # camelot+standard / both-folders guess (2026-11-05).
         Flavor(
             "forever",
             "WoW Forever",
             ("forever", "wowforever", "camelot"),
             ("Forever", "Camelot"),
-            frozenset({"camelot", "standard"}),
-            # approximate: neither folder alone matches the client's global list
-            # (Camelot 88%, Mainline 75%), so both are taken where they exist
-            (("Game", ("Camelot", "Mainline")), ("Family", ("Camelot", "Mainline"))),
+            frozenset({"camelot", "mainline", "standard"}),
+            (("Game", ("Camelot",)), ("Family", ("Mainline",))),
             "wowf",
         ),
     )

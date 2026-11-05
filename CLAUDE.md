@@ -49,7 +49,11 @@ Python + `mcp` 2.x (`MCPServer`, not v1's `FastMCP`). Runtime deps outside Pytho
 - Guard detection (`scan._guarded_pcs`) sees globals, flavor-flag fields
   (`Postal.WOWRetail`) and version probes (`GetBuildInfo`). Plain locals are invisible.
 - luac5.1 rejects a UTF-8 BOM the client accepts; both scan and check strip it.
-- Forever's game type `camelot` is inferred from its TOCs, not documented.
+- **Forever is a Mainline-family client whose game is Camelot**: `[Family]`=Mainline,
+  `[Game]`=Camelot, game types `camelot`+`mainline`+`standard`. Inferred from its TOCs and
+  checked against the client's FrameXML dump (95% found, the same as Retail). The earlier
+  guess (both folders for both tokens, no `mainline` type) found 78% and wrongly reported
+  about 830 Blizzard functions as absent on Forever. Re-measure before changing it.
 - GlobalStrings is parsed line by line: upstream has shipped a malformed line.
 - Ketho annotations are retail-oriented. That is why LuaLS `undefined-global` is off
   and the types pass is advisory.
