@@ -47,8 +47,12 @@ Python + `mcp` 2.x (`MCPServer`, not v1's `FastMCP`). Runtime deps outside Pytho
   raises "Missing entry" through the error handler, so treat it as a bug.
 - **`analyse()` tracks registers holding `_G`**; any opcode in `_WRITES_A` clears one. Without
   that, `bar.x = …` after a reused register read as a global definition (2026-11-05).
+- **WoW Forever is a separate install on northpc**: `C:\Program Files (x86)\World of Warcraft\_forever_`
+  (`FOREVER_ROOT`, `CLIENT_ROOTS` in `game.py`), with its own `.build.info`. That tree also has
+  fresh, unused `_anniversary_`/`_classic_era_` clients; jim's real ones (settings, ~145 addons) are
+  under `WOW_ROOT`, so `installed_builds()` reads only `wowf` from the Forever tree (2026-11-06).
 - **Hook names are references**: `_hooked_name()` reads the string literal loaded into the
-  first argument register of `hooksecurefunc` / `:SecureHook` / `:RawHook`. Names removed
+  first argument register of `hooksecurefunc` / `:Hook` / `:SecureHook` / `:RawHook`. Names removed
   from *every* client land in "unknown in every client", not in errors: the index has no
   history, so check that list after a Classic patch.
 - **Retail's tooltip `Set*` methods are built in Lua** (`TooltipDataHandler.lua`'s accessor

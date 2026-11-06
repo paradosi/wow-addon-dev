@@ -44,7 +44,7 @@ _EVENTISH = re.compile(r'^"[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+"$')
 # functions that take the name of a global function to hook as a string; a
 # vanished name errors at load (xCT+'s CombatText_AddMessage on TBC 2.5.6)
 _HOOKERS = {"hooksecurefunc"}
-_ACE_HOOKERS = {"SecureHook", "RawHook"}
+_ACE_HOOKERS = {"Hook", "SecureHook", "RawHook"}
 
 
 def _hooked_name(fn: list, k: int, reg: int) -> tuple[str, int] | None:

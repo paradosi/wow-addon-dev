@@ -33,13 +33,23 @@ HOST = os.environ.get("WOWDEV_GAME_HOST", "northpc")
 WOW_ROOT = os.environ.get(
     "WOWDEV_WOW_ROOT", r"C:\Program Files (x86)\Battle.net Games\World of Warcraft"
 )
-# flavor key -> client folder under WOW_ROOT. Forever is not installed there yet;
-# add its folder name here once it is.
+# WoW Forever installs as its own product with its own launcher, in a
+# separate tree (found on northpc 2026-11-06). That tree also holds fresh
+# _anniversary_/_classic_era_ clients, but the ones with jim's settings and
+# addons are under WOW_ROOT, so only Forever is read from here.
+FOREVER_ROOT = os.environ.get("WOWDEV_FOREVER_ROOT", r"C:\Program Files (x86)\World of Warcraft")
+# flavor key -> client folder name, under CLIENT_ROOTS[flavor] (default WOW_ROOT)
 CLIENT_DIRS = {
     "live": "_retail_",
     "classic_anniversary": "_anniversary_",
     "classic_era": "_classic_era_",
+    "forever": "_forever_",
 }
+CLIENT_ROOTS = {"forever": FOREVER_ROOT}
+
+
+def client_dir(flavor: str) -> str:
+    return rf"{CLIENT_ROOTS.get(flavor, WOW_ROOT)}\{CLIENT_DIRS[flavor]}"
 MARKER = ".wowdev-deploy"  # written into every folder deploy installs
 _NOISE = re.compile(
     r"post-quantum|store now, decrypt later|server may need to be upgraded|openssh\.com/pq"
@@ -87,29 +97,40 @@ def _q(s: str) -> str:
 
 
 def _addons_dir(flavor: str) -> str:
-    return rf"{WOW_ROOT}\{CLIENT_DIRS[flavor]}\Interface\AddOns"
+    return rf"{client_dir(flavor)}\Interface\AddOns"
 
 
 def installed_clients() -> list[str]:
     script = "; ".join(
-        f"if (Test-Path {_q(WOW_ROOT + chr(92) + d)}) {{ {_q(k)} }}" for k, d in CLIENT_DIRS.items()
+        f"if (Test-Path {_q(client_dir(k))}) {{ {_q(k)} }}" for k in CLIENT_DIRS
     )
     return [ln.strip() for ln in ps(script).splitlines() if ln.strip() in CLIENT_DIRS]
+
+
+_ROOT_PRODUCTS = {FOREVER_ROOT: ("wowf",)}
 
 
 def installed_builds() -> dict[str, str]:
     """{product: version} from the install's .build.info, the launcher's own
     record of what each client is patched to (e.g. wow_anniversary: 2.5.6.70577)."""
-    raw = ps(f"Get-Content -Raw (Join-Path {_q(WOW_ROOT)} '.build.info')")
-    lines = [ln for ln in raw.splitlines() if "|" in ln]
-    if not lines:
-        return {}
-    head = [h.split("!")[0] for h in lines[0].split("|")]
-    out = {}
-    for ln in lines[1:]:
-        row = dict(zip(head, ln.split("|"), strict=False))
-        if row.get("Product") and row.get("Version"):
-            out[row["Product"]] = row["Version"]
+    out: dict[str, str] = {}
+    for root in dict.fromkeys([WOW_ROOT, *CLIENT_ROOTS.values()]):
+        p = _q(root + r"\.build.info")
+        raw = ps(f"if (Test-Path {p}) {{ Get-Content -Raw {p} }}")
+        lines = [ln for ln in raw.splitlines() if "|" in ln]
+        if not lines:
+            continue
+        head = [h.split("!")[0] for h in lines[0].split("|")]
+        for ln in lines[1:]:
+            row = dict(zip(head, ln.split("|"), strict=False))
+            product = row.get("Product")
+            if not product or not row.get("Version"):
+                continue
+            # a product in a root that does not supply that flavor's client
+            # (Forever's tree has its own TBC/Era) must not hide the real one
+            if root != WOW_ROOT and product not in _ROOT_PRODUCTS.get(root, ()):
+                continue
+            out[product] = row["Version"]
     return out
 
 
@@ -328,7 +349,7 @@ def format_deploy(r: DeployResult) -> str:
 
 def _bug_grabber(flavor: str) -> tuple[str, str, dict]:
     """(path, last write time, BugGrabberDB) for the newest account's file."""
-    wtf = rf"{WOW_ROOT}\{CLIENT_DIRS[flavor]}\WTF\Account"
+    wtf = rf"{client_dir(flavor)}\WTF\Account"
     script = f"""
 $f = Get-ChildItem {_q(wtf)} -Recurse -Filter '!BugGrabber.lua' -ErrorAction SilentlyContinue |
   Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -401,7 +422,7 @@ def taint(addon: str | None = None, flavor: str = "classic_anniversary", tail: i
     if flavor not in CLIENT_DIRS:
         raise GameHostError(f"no client folder known for {flavor}")
     pkg = _pkg(addon)
-    base = rf"{WOW_ROOT}\{CLIENT_DIRS[flavor]}"
+    base = client_dir(flavor)
     script = f"""
 $c = {_q(base + r"\WTF\Config.wtf")}
 if (Test-Path $c) {{ Select-String -Path $c -Pattern '^SET taintLog' | % {{ 'CVAR ' + $_.Line }} }}

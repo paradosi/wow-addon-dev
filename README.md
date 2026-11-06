@@ -327,7 +327,7 @@ family bucket of `interface // 100` (or `// 10000` for 12.x) means 11508 and
 every `GETGLOBAL` (plus one `GETTABLE` level for `C_X.F` and `Enum.X`) becomes a
 reference with a line number.
 A function named by a string literal is a reference too, when it is the
-first argument of `hooksecurefunc("Name", …)` or Ace's `:SecureHook("Name", …)` /
+first argument of `hooksecurefunc("Name", …)` or Ace's `:Hook("Name", …)`, `:SecureHook("Name", …)` /
 `:RawHook("Name", …)`. Hooking a function the client no longer has errors at load,
 which is how xCT+ broke on TBC 2.5.6. The object form, `hooksecurefunc(frame, "Method", …)`,
 is left alone.
