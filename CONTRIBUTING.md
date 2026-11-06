@@ -3,6 +3,9 @@
 Thanks for looking. This is a small project maintained in spare time, so short,
 concrete reports and focused pull requests get handled fastest.
 
+Everyone taking part is expected to follow the
+[Code of Conduct](CODE_OF_CONDUCT.md). Report problems to jim@fano.email.
+
 ## Ways to help
 
 - **Report a wrong API answer.** The index says a function exists on a client and

@@ -315,6 +315,7 @@ tests/test_core.py
 systemd/         optional user timer that runs `wowdev refresh` nightly
 .github/         issue templates (bug, wrong API data, idea) and PR template
 CONTRIBUTING.md  how to report problems and send changes
+CODE_OF_CONDUCT.md  Contributor Covenant 2.1
 LICENSE          MIT
 ```
 
@@ -466,6 +467,7 @@ warned on.
 ## Contributing
 
 Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
+Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 The most useful reports are concrete: an API the index marks wrong for a client
 (with the client build), a guard the scan misreads (with a few lines of Lua that
 reproduce it), or a Blizzard UI change that broke an addon and could have been
