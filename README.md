@@ -13,7 +13,9 @@ years apart. Nothing in it is specific to them; point it at your own addon folde
 with `WOWDEV_ADDONS`.
 
 > [!TIP]
-> **Ideas, bug reports and fixes are welcome.** See [Contributing](#contributing).
+> **Ideas, bug reports and fixes are welcome.** Ideas and questions go in
+> [Discussions](https://github.com/paradosi/wow-addon-dev/discussions), bugs in Issues;
+> see [Contributing](#contributing).
 > An API the index gets wrong, or a compat idiom the scan doesn't recognise, is
 > exactly the kind of report that helps.
 
@@ -313,7 +315,7 @@ src/wowdev/
   cli.py       `wowdev` subcommands; `setup` installs pinned tools
 tests/test_core.py
 systemd/         optional user timer that runs `wowdev refresh` nightly
-.github/         issue templates (bug, wrong API data, idea) and PR template
+.github/         issue forms (bug, wrong API data; ideas link to Discussions) and PR template
 CONTRIBUTING.md  how to report problems and send changes
 CODE_OF_CONDUCT.md  Contributor Covenant 2.1
 LICENSE          MIT

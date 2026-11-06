@@ -15,7 +15,10 @@ Everyone taking part is expected to follow the
   it flagged a call that can never run on that client, or passed one that errors
   in game. A few lines of Lua that reproduce it are worth more than a description.
 - **Suggest an idea.** A check you wish the gate ran, a release step it could
-  automate, an MCP tool that would help. Open an issue with the *Idea* template.
+  automate, an MCP tool that would help. Post it in
+  [Discussions → Ideas](https://github.com/paradosi/wow-addon-dev/discussions/categories/ideas).
+- **Ask a question** in [Discussions → Q&A](https://github.com/paradosi/wow-addon-dev/discussions/categories/q-a).
+  Issues are for bugs and wrong API data.
 - **Send a fix.** See below.
 
 ## Development

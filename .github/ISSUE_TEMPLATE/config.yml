@@ -1,1 +1,8 @@
 blank_issues_enabled: true
+contact_links:
+  - name: Idea or feature request
+    url: https://github.com/paradosi/wow-addon-dev/discussions/new?category=ideas
+    about: Suggest a check, a release step, an MCP tool or anything else, in Discussions.
+  - name: Question
+    url: https://github.com/paradosi/wow-addon-dev/discussions/new?category=q-a
+    about: How do I…? Why does the scan…? Ask in Discussions Q&A.
