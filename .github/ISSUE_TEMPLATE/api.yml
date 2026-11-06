@@ -1,0 +1,26 @@
+name: Wrong API data
+description: The index says something exists (or doesn't) on a client, and the game disagrees
+labels: [api-data]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: API, event or global
+      placeholder: "e.g. C_Spell.GetSpellInfo"
+    validations: { required: true }
+  - type: input
+    id: client
+    attributes:
+      label: Client and build
+      description: "`/dump GetBuildInfo()` in game"
+    validations: { required: true }
+  - type: textarea
+    id: index
+    attributes:
+      label: What `wowdev api <name>` says
+      render: text
+  - type: textarea
+    id: game
+    attributes:
+      label: What the game does
+    validations: { required: true }

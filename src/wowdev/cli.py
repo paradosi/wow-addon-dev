@@ -22,7 +22,7 @@
                                      locale keys and duplicated code (advisory)
     wowdev mcp                       run the MCP server on stdio
 
-ADDON is a path or a directory name under ~/projects/wowaddons. `bump` and
+ADDON is a path or a directory name under $WOWDEV_ADDONS (~/projects/wowaddons). `bump` and
 `interface` print a diff and change nothing without -w/--write.
 """
 

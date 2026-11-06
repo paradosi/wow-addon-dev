@@ -13,6 +13,7 @@ Errors fail the gate; warnings are reported and don't.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import tempfile
@@ -22,7 +23,10 @@ from pathlib import Path
 from . import luals, package, scan, toc
 from .index import Index
 
-ADDONS_DIR = Path.home() / "projects" / "wowaddons"
+# the folder holding one directory per addon (each with a .pkgmeta)
+ADDONS_DIR = Path(
+    os.environ.get("WOWDEV_ADDONS", Path.home() / "projects" / "wowaddons")
+).expanduser()
 _LIB = re.compile(r"(^|/)(libs?|libraries)/", re.I)
 _LUACHECK = re.compile(r"^(.+?):(\d+):(\d+): \((\w)(\d+)\) (.*)$")
 

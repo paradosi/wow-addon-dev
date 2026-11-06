@@ -6,8 +6,16 @@ client the addon's TOCs claim to support, and runs the release steps locally
 before anything is tagged. All of it is exposed both as a CLI (`wowdev`) and as an
 MCP server, so Claude can check any API it is about to use.
 
-Built for the addons in `~/projects/wowaddons` (FarmMode, iChat, FloAspectBar,
-FloTotemBar, Postal, xCT+), which ship one codebase to clients that are years apart.
+It was built for, and is used daily on, six published addons by
+[paradosi](https://github.com/paradosi): FarmMode, iChat, FloAspectBar, FloTotemBar,
+Postal Community Edition and xCT+, which each ship one codebase to clients that are
+years apart. Nothing in it is specific to them; point it at your own addon folder
+with `WOWDEV_ADDONS`.
+
+> [!TIP]
+> **Ideas, bug reports and fixes are welcome.** See [Contributing](#contributing).
+> An API the index gets wrong, or a compat idiom the scan doesn't recognise, is
+> exactly the kind of report that helps.
 
 ## Table of contents
 
@@ -22,6 +30,7 @@ FloTotemBar, Postal, xCT+), which ship one codebase to clients that are years ap
 - [How it works](#how-it-works)
 - [Design decisions](#design-decisions)
 - [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
 - [License and data sources](#license-and-data-sources)
 
 ## Overview
@@ -81,20 +90,21 @@ live builds 12.1.5 (retail), 2.5.6 (TBC Anniversary), 1.15.9 (Classic Era) and
 1.60.1 (Forever).
 
 > [!NOTE]
-> **The live-game loop runs against `northpc`** (since 2026-11-05): `wowdev deploy`
-> installs a build into the clients that already have the addon, and `wowdev errors`
-> reads back what BugGrabber caught. The static gate still runs first; the game is
-> where combat lockdown, taint and timing get confirmed.
+> **The live-game loop is optional and setup-specific.** `wowdev deploy` installs a
+> build into the clients that already have the addon, and `wowdev errors` reads back
+> what BugGrabber caught. It assumes the game runs on a Windows PC reachable over
+> ssh with key auth (the author's is called `northpc`; set `WOWDEV_GAME_HOST`). Everything
+> else (index, scan, gate, MCP server, release tooling) needs no game client at all.
 
 ## Requirements
 
-| Tool | Why | On `deathstar` |
+| Tool | Why | How to get it |
 |---|---|---|
-| Python ≥ 3.12 + `uv` | runs everything | yes |
+| Python ≥ 3.12 + `uv` | runs everything | [astral.sh/uv](https://docs.astral.sh/uv/) |
 | `lua5.1`, `luac5.1` | evaluate Blizzard's data tables; compile Lua to bytecode for the scan | apt `lua5.1` |
 | `luacheck` | lint pass | apt `lua-check` |
-| `git`, `zip`, `curl`, `bash` | upstream fetch; BigWigs packager | yes |
-| `rg` (ripgrep) | `wow_source_search` | `/usr/bin/rg` |
+| `git`, `zip`, `curl`, `bash` | upstream fetch; BigWigs packager | your OS packages |
+| `rg` (ripgrep) | `wow_source_search` | apt `ripgrep` |
 | lua-language-server 3.19.2 | optional type pass | installed by `wowdev setup` |
 | BigWigsMods/packager v2.7.0 | `package` | installed by `wowdev setup` |
 
@@ -103,20 +113,35 @@ index (~67 MB) and the tools.
 
 ## Installation
 
+Developed and used on Linux (Ubuntu). macOS should work with the same tools from
+Homebrew; Windows is untested outside WSL.
+
 ```sh
-cd ~/projects/wow-addon-dev
+git clone https://github.com/paradosi/wow-addon-dev
+cd wow-addon-dev
 just setup        # uv sync, install LuaLS + packager, clone upstream, build index (~1 min)
+export WOWDEV_ADDONS=~/src/my-addons   # the folder holding your addon repos
 ```
 
-`~/bin/wowdev` is the on-PATH wrapper (`uv run --project ~/projects/wow-addon-dev
-wowdev "$@"`), and `~/projects/wowaddons/check` calls `wowdev check`.
-
-Register the MCP server with Claude Code. It is already done on `deathstar`, at user
-scope, under the name `wow`:
+Put a wrapper on your `PATH` so `wowdev` works from anywhere:
 
 ```sh
-claude mcp add -s user wow -- /home/jim/bin/wowdev mcp
+cat > ~/.local/bin/wowdev <<'SH'
+#!/bin/sh
+exec uv run --project "$HOME/path/to/wow-addon-dev" wowdev "$@"
+SH
+chmod +x ~/.local/bin/wowdev
 ```
+
+Register the MCP server with Claude Code (or any MCP client that speaks stdio),
+at user scope, under the name `wow`:
+
+```sh
+claude mcp add -s user wow -- ~/.local/bin/wowdev mcp
+```
+
+The author's setup has a `check` script in the addon folder that runs
+`wowdev check "$@"`, so `./check MyAddon` is the pre-commit gate.
 
 ## Usage
 
@@ -244,9 +269,11 @@ deliberate command rather than a tool call.
 
 | Variable | Default | Meaning |
 |---|---|---|
+| `WOWDEV_ADDONS` | `~/projects/wowaddons` | folder holding one directory per addon (each with a `.pkgmeta`); `ADDON` arguments are looked up here |
 | `WOWDEV_DATA` | `~/data/wowdev` | upstream clones, `index.sqlite`, `tools/`, `releases/` |
 | `WOWDEV_LUA` | `lua5.1` | interpreter used to evaluate Blizzard's data tables |
-| `WOWDEV_GAME_HOST` | `northpc` | ssh host of the Windows PC that runs WoW (key auth, `BatchMode`) |
+| `WOWDEV_GAME_HOST` | `northpc` (the author's) | ssh host of the Windows PC that runs WoW (key auth, `BatchMode`) |
+| `WOWDEV_FOREVER_ROOT` | `C:\Program Files (x86)\World of Warcraft` | WoW Forever's separate install on that PC |
 | `WOWDEV_WOW_ROOT` | `C:\Program Files (x86)\Battle.net Games\World of Warcraft` | the WoW install on it; client folders are mapped in `game.CLIENT_DIRS` |
 
 Nothing is secret: every input is a public repository, and the game PC is reached with the existing ssh key. Clients are configured in
@@ -285,6 +312,10 @@ src/wowdev/
   server.py    MCP server (mcp 2.x MCPServer), 18 read-only tools
   cli.py       `wowdev` subcommands; `setup` installs pinned tools
 tests/test_core.py
+systemd/         optional user timer that runs `wowdev refresh` nightly
+.github/         issue templates (bug, wrong API data, idea) and PR template
+CONTRIBUTING.md  how to report problems and send changes
+LICENSE          MIT
 ```
 
 ## How it works
@@ -432,9 +463,17 @@ warned on.
   `ssh northpc` and `powershell -EncodedCommand`, because cmd → PowerShell
   quoting does not survive plain strings.
 
+## Contributing
+
+Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
+The most useful reports are concrete: an API the index marks wrong for a client
+(with the client build), a guard the scan misreads (with a few lines of Lua that
+reproduce it), or a Blizzard UI change that broke an addon and could have been
+caught statically.
+
 ## License and data sources
 
-The code here is unlicensed and private. The indexed data comes from the
+The code is [MIT-licensed](LICENSE). The indexed data comes from the
 repositories above. Ketho/vscode-wow-api and NumyAddon/FramexmlAnnotations are
 MIT; the Blizzard UI source is Blizzard's, mirrored by Gethe. The data is
 downloaded locally and is not redistributed by this repo.
