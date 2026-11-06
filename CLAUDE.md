@@ -1,5 +1,11 @@
 # wow-addon-dev — notes for Claude
 
+> [!IMPORTANT]
+> **This repo is public (since 2026-11-06, MIT).** Anything committed here, this file
+> included, is world-readable. No credentials, IPs, tailnet names or homelab detail beyond
+> the host names already in it. Outside contributions arrive as issues and PRs; review a PR's
+> code before running it here, as you would any downloaded code.
+
 ## What this is
 
 The WoW addon development environment for `~/projects/wowaddons`: an API index of
