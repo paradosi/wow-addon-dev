@@ -30,6 +30,32 @@ LUAC = "luac5.1"
 _INSTR = re.compile(r"^\s*(\d+)\s+\[(\d+)\]\s+([A-Z]+)\s+([-\d ]+?)\s*(?:;\s*(.*))?$")
 _FUNC = re.compile(r"^(?:main|function) <(.+):(\d+),(\d+)>.* at (0x[0-9a-f]+)\)")
 _TEST_OPS = {"TEST", "TESTSET", "EQ", "LT", "LE"}
+# opcodes that write register A (for "is this still the loaded global?")
+_WRITES_REG = {
+    "MOVE",
+    "LOADK",
+    "LOADBOOL",
+    "LOADNIL",
+    "GETUPVAL",
+    "GETGLOBAL",
+    "GETTABLE",
+    "NEWTABLE",
+    "SELF",
+    "ADD",
+    "SUB",
+    "MUL",
+    "DIV",
+    "MOD",
+    "POW",
+    "UNM",
+    "NOT",
+    "LEN",
+    "CONCAT",
+    "CALL",
+    "TESTSET",
+    "CLOSURE",
+    "VARARG",
+}
 _LIB_DIR = re.compile(r"(^|/)(libs?|libraries)(/|$)", re.I)
 # globals every addon may read that no data file lists. LibStub is created by
 # `_G[LIBSTUB_MAJOR] = ...`, a computed key no static pass can see.
@@ -193,30 +219,56 @@ def _tested_regs(ins: _Ins) -> set[int]:
     return {a for a in ins.args[1:] if a >= 0}  # EQ/LT/LE: B and C (RK; constants < 0)
 
 
-def _guarded_pcs(fn: list[_Ins]) -> tuple[set[int], set[str]]:
-    """Instruction pcs that only run when a feature test passed or failed,
-    and the global names that were tested.
+def _test_polarity(ins: _Ins) -> bool | None:
+    """For TEST/TESTSET: True if the fall-through (the region after the JMP)
+    runs when the tested value is truthy, False if when it is falsy. Lua 5.1
+    skips the JMP when the value's truthiness differs from C."""
+    # luac -l lists both as A B C (TEST's B is unused); C is the flag
+    if ins.op in ("TEST", "TESTSET") and len(ins.args) >= 3:
+        return ins.args[2] == 0
+    return None
+
+
+def _guarded_pcs(
+    fn: list[_Ins], own: frozenset[str] = frozenset()
+) -> tuple[set[int], dict[int, set[str]], set[str]]:
+    """Which instructions sit inside a feature test, and for which names.
+
+    Returns (general, named, tested). `general` pcs are guarded for every
+    reference; `named[pc]` lists the only names a pc is guarded for; `tested`
+    is every global name a test looked at.
 
     A feature test is a TEST/EQ/LT/LE followed by JMP whose operand, on the
-    same source line, came from: a global (`if C_X then`, `C_X and C_X.F or
-    F`), a field named like a flavor flag (`if Postal.WOWRetail then`), or a
-    comparison involving a version probe (`select(4, GetBuildInfo()) >=
-    110000`, `WOW_PROJECT_ID == WOW_PROJECT_CLASSIC`). Everything up to the
-    jump target is conditional; if the instruction just before the target is
-    a forward JMP (end of a then-block), the else arm is conditional too.
-    Plain locals (`if isClassic then`) are not recognised."""
+    same source line, came from a global, a field named like a flavor flag
+    (`Postal.WOWRetail`), or a comparison with a version probe
+    (`WOW_PROJECT_ID == WOW_PROJECT_CLASSIC`). Flavor flags and version probes
+    guard both arms for everything. A global's truthiness guards differently
+    per arm: where the global exists (`if C_X then`), only references to it
+    and its members are covered; where it is missing (`C_X and C_X.F or F`,
+    `if not C_X then`), the arm is a fallback and covers everything. Globals
+    the file assigns itself (`if not FLOLIB_VERSION then`), comparisons with
+    a global (`self == FloBarEARTH`), and a global whose register was reused
+    before the test (`not M:IsShown()`) are not feature tests. Plain locals (`if isClassic then`) are not recognised."""
     by_pc = {i.pc: i for i in fn}
-    guarded: set[int] = set()
+    general: set[int] = set()
+    named: dict[int, set[str]] = {}
     tested: set[str] = set()
     for k, ins in enumerate(fn):
         if ins.op not in _TEST_OPS or k + 1 >= len(fn) or fn[k + 1].op != "JMP":
             continue
         regs = _tested_regs(ins)
         names: list[str] = []
-        is_guard = False
+        flavor_guard = False
         back = [fn[j] for j in range(max(0, k - 8), k) if fn[j].line == ins.line]
         for j, b in enumerate(back):
             key = b.comment.split('"')[1] if b.comment.startswith('"') else None
+            # a register overwritten after the load no longer holds that value
+            # (`not M:IsShown()` tests IsShown's result, not M)
+            later = [
+                w
+                for w in back[j + 1 :]
+                if w.op in _WRITES_REG and w.args and w.args[0] == b.args[0]
+            ]
             if b.op == "GETGLOBAL":
                 nxt = back[j + 1] if j + 1 < len(back) else None
                 composed = (
@@ -227,17 +279,26 @@ def _guarded_pcs(fn: list[_Ins]) -> tuple[set[int], set[str]]:
                     and nxt.comment.startswith('"')
                     else None
                 )
-                if b.args[0] in regs or (composed and nxt.args[0] in regs):
-                    is_guard = True
+                # only truthiness is a feature test; `self == FloBarEARTH` is not
+                truthy = ins.op in ("TEST", "TESTSET")
+                direct = truthy and b.args[0] in regs and not later
+                via_field = (
+                    truthy
+                    and composed
+                    and nxt.args[0] in regs
+                    and later[:1] == [nxt]
+                    and len(later) == 1
+                )
+                if (direct or via_field) and b.comment not in own:
                     names.append(b.comment)
                     if composed:
                         names.append(composed)
                 if b.comment in _VERSION_PROBES and ins.op != "TEST":
-                    is_guard = True
+                    flavor_guard = True
             elif b.op in ("GETTABLE", "SELF") and key and _FLAVOR_FLAG.match(key):
                 if b.args[0] in regs or b.op == "SELF":
-                    is_guard = True
-        if not is_guard:
+                    flavor_guard = True
+        if not (flavor_guard or names):
             continue
         tested.update(names)
         tested.update(n.split(".")[0] for n in names)
@@ -245,15 +306,33 @@ def _guarded_pcs(fn: list[_Ins]) -> tuple[set[int], set[str]]:
         target = jmp.pc + 1 + jmp.args[0]
         if target <= jmp.pc:
             continue
-        end = target
+        then_arm = range(jmp.pc + 1, target)
+        else_arm = range(0)
         before = by_pc.get(target - 1)
         if before and before.op == "JMP" and before.pc + 1 + before.args[0] > target:
-            end = before.pc + 1 + before.args[0]
-        guarded.update(range(jmp.pc + 1, end))
-    return guarded, tested
+            else_arm = range(target, before.pc + 1 + before.args[0])
+        polarity = _test_polarity(ins)
+        if flavor_guard or polarity is None:
+            general.update(then_arm)
+            general.update(else_arm)
+            continue
+        present, missing = (then_arm, else_arm) if polarity else (else_arm, then_arm)
+        general.update(missing)
+        for pc in present:
+            named.setdefault(pc, set()).update(names)
+    return general, named, tested
 
 
-def analyse(path: Path, rel: str, namespaces: set[str]) -> tuple[list[Ref], set[str], set[str]]:
+def _covered(name: str, names: set[str] | None) -> bool:
+    """Is a reference to `name` covered by a test of any of `names`?"""
+    if not names:
+        return False
+    return name in names or name.split(".")[0] in names
+
+
+def analyse(
+    path: Path, rel: str, namespaces: set[str], api: set[str] | None = None
+) -> tuple[list[Ref], set[str], set[str]]:
     """-> (references, globals this file defines, table keys this file sets)."""
     data = path.read_bytes()
     tmp = None
@@ -295,22 +374,40 @@ def analyse(path: Path, rel: str, namespaces: set[str]) -> tuple[list[Ref], set[
     refs: list[Ref] = []
     defines: set[str] = set()
     keys: set[str] = set()
-    inherited: set[str] = set()  # closures created inside a guarded region
+    inherited: set[str] = set()  # closures created inside a generally guarded region
+    inherited_named: dict[str, set[str]] = {}  # ... or inside a region guarded for some names
     inherited_tests: dict[str, set[str]] = {}
+    # globals this file assigns that no client has (FLOLIB_VERSION): a test of
+    # one is not a feature test. A file that assigns a real API name is
+    # shimming it (`if not C_AddOns then C_AddOns = {} end`), which is one.
+    own = frozenset(
+        i.comment
+        for _, fn in funcs
+        for i in fn
+        if i.op == "SETGLOBAL" and api is not None and i.comment not in api
+    )
     # luac prints a function before its children, so guards flow downwards
     for addr, fn in funcs:
-        guarded, tested = _guarded_pcs(fn)
+        general, named, tested = _guarded_pcs(fn, own)
         tested |= inherited_tests.get(addr, set())
         whole = addr in inherited
+        outer = inherited_named.get(addr, set())
         g_regs: set[int] = set()
         for k, ins in enumerate(fn):
-            g = whole or ins.pc in guarded
+            g = whole or ins.pc in general
+            allowed = named.get(ins.pc, set()) | outer
+
+            def cov(n: str, g=g, allowed=allowed, tested=tested) -> bool:
+                return g or _covered(n, allowed) or n in tested
+
             nxt = fn[k + 1] if k + 1 < len(fn) else None
             if ins.op == "CLOSURE":
                 child = ins.comment.strip()
                 inherited_tests[child] = set(tested)
                 if g:
                     inherited.add(child)
+                elif allowed:
+                    inherited_named[child] = set(allowed)
             elif ins.op == "GETGLOBAL":
                 name = ins.comment
                 if name == "_G":
@@ -325,12 +422,10 @@ def analyse(path: Path, rel: str, namespaces: set[str]) -> tuple[list[Ref], set[
                     and (name in namespaces or name in ("Enum", "Constants"))
                 ):
                     composed = f"{name}.{nxt.comment.split(chr(34))[1]}"
-                    refs.append(
-                        Ref(composed, rel, ins.line, g or composed in tested or name in tested)
-                    )
-                refs.append(Ref(name, rel, ins.line, g or name in tested))
+                    refs.append(Ref(composed, rel, ins.line, cov(composed) or name in tested))
+                refs.append(Ref(name, rel, ins.line, cov(name)))
                 if name in _HOOKERS and (hk := _hooked_name(fn, k, ins.args[0] + 1)):
-                    refs.append(Ref(hk[0], rel, hk[1], g or hk[0] in tested))
+                    refs.append(Ref(hk[0], rel, hk[1], cov(hk[0])))
             elif ins.op == "SETGLOBAL":
                 defines.add(ins.comment)
             elif ins.op == "LOADK" and _EVENTISH.match(ins.comment):
@@ -344,7 +439,7 @@ def analyse(path: Path, rel: str, namespaces: set[str]) -> tuple[list[Ref], set[
                 meth = ins.comment.split('"')[1]
                 refs.append(Ref(meth, rel, ins.line, g or ("method:" + meth) in tested, True))
                 if meth in _ACE_HOOKERS and (hk := _hooked_name(fn, k, ins.args[0] + 2)):
-                    refs.append(Ref(hk[0], rel, hk[1], g or hk[0] in tested))
+                    refs.append(Ref(hk[0], rel, hk[1], cov(hk[0])))
             elif (
                 ins.op == "GETTABLE"
                 and ins.comment.startswith('"')
@@ -369,6 +464,13 @@ def scan(addon_dir: Path, flavors: list[str] | None = None, include_libs: bool =
     if not tocs:
         raise FileNotFoundError(f"no .toc in {addon_dir}")
     namespaces = set().union(*(idx.sets(f)["namespaces"] for f in idx.flavors))
+    api = set().union(
+        *(
+            idx.sets(f)[k]
+            for f in idx.flavors
+            for k in ("native", "ui", "lod", "shim", "namespaces")
+        )
+    )
 
     report: dict = {"addon": addon_dir.name, "tocs": [], "parse_errors": [], "flavors": {}}
     want = {resolve_flavor(f) for f in flavors} if flavors else None
@@ -390,7 +492,7 @@ def scan(addon_dir: Path, flavors: list[str] | None = None, include_libs: bool =
             if p not in cache:
                 rel = str(p.relative_to(addon_dir))
                 try:
-                    cache[p] = analyse(p, rel, namespaces)
+                    cache[p] = analyse(p, rel, namespaces, api)
                 except SyntaxError as e:
                     report["parse_errors"].append(f"{rel}: {e}")
                     cache[p] = ([], set(), set())

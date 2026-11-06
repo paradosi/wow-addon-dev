@@ -50,6 +50,8 @@ CLIENT_ROOTS = {"forever": FOREVER_ROOT}
 
 def client_dir(flavor: str) -> str:
     return rf"{CLIENT_ROOTS.get(flavor, WOW_ROOT)}\{CLIENT_DIRS[flavor]}"
+
+
 MARKER = ".wowdev-deploy"  # written into every folder deploy installs
 _NOISE = re.compile(
     r"post-quantum|store now, decrypt later|server may need to be upgraded|openssh\.com/pq"
@@ -101,9 +103,7 @@ def _addons_dir(flavor: str) -> str:
 
 
 def installed_clients() -> list[str]:
-    script = "; ".join(
-        f"if (Test-Path {_q(client_dir(k))}) {{ {_q(k)} }}" for k in CLIENT_DIRS
-    )
+    script = "; ".join(f"if (Test-Path {_q(client_dir(k))}) {{ {_q(k)} }}" for k in CLIENT_DIRS)
     return [ln.strip() for ln in ps(script).splitlines() if ln.strip() in CLIENT_DIRS]
 
 

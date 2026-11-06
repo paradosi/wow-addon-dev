@@ -340,9 +340,24 @@ line, came from one of three things:
 - **A field named like a flavor flag**: `Postal.WOWRetail`, `ns.isClassic`.
 - **A comparison involving a version probe**: `GetBuildInfo`, `WOW_PROJECT_ID`.
 
-The else-arm of a guard is guarded too, and so are closures created inside one.
+Flavor flags and version probes guard both arms for every name. A global's
+truthiness is narrower (since 2026-11-06): the arm where the global *exists*
+(`if C_Spell then … end`) covers only that global and its members, so
+`if C_Spell then GetSpellInfo(1) end` still reports `GetSpellInfo`; the arm
+where it is *missing* (`if not C_X then`, the `or F` in `C_X and C_X.F or F`)
+is a fallback and covers everything. Closures created inside a guard inherit it.
+Three things look like tests and are not: a comparison with a global
+(`self == FloBarEARTH`), a global the file assigns itself
+(`if not FLOLIB_VERSION then`), and a global whose register was reused before
+the test (`not MainMenuBar:IsShown()` tests `IsShown`'s result).
 Guarded references to absent names are reported as the expected compat idiom
 rather than as errors.
+
+> [!WARNING]
+> **Before 2026-11-06 the scanner over-trusted guards.** Any global test on a line
+> guarded everything in both arms, so FloTotemBar 1.2.4 and FloAspectBar 1.2.3
+> shipped to WoW Forever calling `GetSpellInfo` and indexing `MainMenuBar`, both
+> absent there, and `./check` passed them.
 
 **The gate.** Errors fail it: syntax, luacheck errors, W113 "accessing undefined
 variable" (every remaining one has been a real bug), TOC errors (missing listed

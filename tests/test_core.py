@@ -76,6 +76,23 @@ def test_guard_if_else_branch_and_closure(tmp_path: Path):
     assert {"X", "C_AddOns"} <= defines
 
 
+def test_global_test_guards_only_its_own_name(tmp_path: Path):
+    f = tmp_path / "t.lua"
+    f.write_text(
+        "if VehicleMenuBar and VehicleMenuBar:IsShown() and not MainMenuBar:IsShown() then end\n"
+        "if C_Spell then C_Spell.GetSpellInfo(1); GetSpellInfo(1) end\n"
+        "local f = (C_X and C_X.F) or OldF\n"
+        "if not MY_LIB_VERSION then\n  MY_LIB_VERSION = 1\n  UnitBuff('player', 1)\nend\n"
+    )
+    refs, _, _ = analyse(f, "t.lua", {"C_Spell", "C_X"}, api={"C_Spell", "UnitBuff"})
+    g = {(r.name, r.guarded) for r in refs}
+    assert ("MainMenuBar", False) in g  # tested VehicleMenuBar, not MainMenuBar
+    assert ("C_Spell.GetSpellInfo", True) in g
+    assert ("GetSpellInfo", False) in g  # inside `if C_Spell`: not a fallback
+    assert ("OldF", True) in g  # the fallback arm
+    assert ("UnitBuff", False) in g  # MY_LIB_VERSION is the file's own global
+
+
 def test_method_refs_and_g_assignments(tmp_path: Path):
     refs, defines, keys = _refs(
         tmp_path, 'local s = CreateFrame("Slider")\ns:SetObeyStepOnDrag(true)\n_G["Foo"] = 1\n'
@@ -460,3 +477,12 @@ def test_unused_finds_dead_weight(tmp_path: Path):
     assert [g["name"] for g in r["globals"]] == ["Demo_Dead"]
     assert any("Never" in x["message"] for x in r["locals"])
     assert r["duplicates"] and r["duplicates"][0]["count"] == 2
+
+
+def test_comparison_with_global_is_not_a_guard(tmp_path: Path):
+    f = tmp_path / "t.lua"
+    f.write_text(
+        "local function u(self)\n  if self == BarA or self == BarB then\n    MainMenuBar:Show()\n  end\nend\n"
+    )
+    refs, _, _ = analyse(f, "t.lua", set(), api=set())
+    assert ("MainMenuBar", False) in {(r.name, r.guarded) for r in refs}
