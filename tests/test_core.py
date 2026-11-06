@@ -486,3 +486,17 @@ def test_comparison_with_global_is_not_a_guard(tmp_path: Path):
     )
     refs, _, _ = analyse(f, "t.lua", set(), api=set())
     assert ("MainMenuBar", False) in {(r.name, r.guarded) for r in refs}
+
+
+def test_namespace_field_shims_are_definitions():
+    from wowdev.build import _DEF_INDENTED
+
+    def name(s):
+        m = _DEF_INDENTED.match(s)
+        return m and next(g for g in m.groups() if g)
+
+    assert name("\tC_X.Old = C_X.New;") == "C_X.Old"
+    assert name("\tC_X.Old = function(id)") == "C_X.Old"
+    assert name("\tself.foo = bar") is None
+    assert name("\tlocal x = Y") is None
+    assert name("\tFoo.bar = 1 + 2") is None

@@ -356,7 +356,9 @@ def collect_flavor(f: Flavor) -> dict:
 _DEF_TOP = re.compile(r"^(?:function\s+([A-Za-z_][\w.:]*)\s*\(|([A-Za-z_][\w.]*)\s*=[^=])")
 # inside the `do ... end` blocks of Blizzard_Deprecated* files, shims are indented
 _DEF_INDENTED = re.compile(
-    r"^\s+(?:function\s+([A-Za-z_][\w.]*)\s*\(|([A-Za-z_]\w*)\s*=\s*function\b)"
+    r"^\s+(?:function\s+([A-Za-z_][\w.]*)\s*\(|([A-Za-z_]\w*)\s*=\s*function\b"
+    # a field shimmed onto a Blizzard table: `C_X.Old = function(` or `C_X.Old = C_X.New;`
+    r"|([A-Z][\w]*\.[\w.]+)\s*=\s*(?:function\b|[A-Za-z_][\w.]*\s*;?\s*(?:--.*)?$))"
 )
 _BOOTSTRAP = re.compile(r"\[Bootstrap\]", re.I)
 _TOC_COND = re.compile(r"\[((?:AllowLoad|ExcludeLoad)[A-Za-z]*)\s+([^\]]+)\]")
@@ -623,12 +625,14 @@ def collect_defs(f: Flavor) -> list[tuple]:
             if not m and (m := _DEF_INDENTED.match(line)):
                 # indented: always in deprecated files; elsewhere only a field of a
                 # capitalised global table (AuraUtil.ForEachAura inside an `if`)
-                name = m.group(1) or m.group(2)
-                if not (deprecated or ("." in name or ":" in name) and name[:1].isupper()):
+                name = next(g for g in m.groups() if g)
+                if m.group(3) and not deprecated:
+                    m = None  # `Frame.field = x` elsewhere is frame state, not API
+                elif not (deprecated or ("." in name or ":" in name) and name[:1].isupper()):
                     m = None
             if not m:
                 continue
-            name = m.group(1) or m.group(2)
+            name = next(g for g in m.groups() if g)
             if name not in seen and (globs is None or "." in name or ":" in name):
                 out.append((f.key, name, rel, i, int(deprecated), int(lod)))
     for p, lod in files:
